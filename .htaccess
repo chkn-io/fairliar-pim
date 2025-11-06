@@ -1,9 +1,7 @@
 # /public_html/.htaccess
 <IfModule mod_rewrite.c>
-  RewriteEngine On
-  # If request is NOT already for /public, and not a real file/dir, send it to /public
-  RewriteCond %{REQUEST_URI} !^/public/
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^ public/%{REQUEST_URI} [L,QSA]
+ RewriteEngine On
+    RewriteCond %{HTTP_HOST} ^(www\.)?pim-fairliar\.com$ [NC]
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ /public/$1 [L]
 </IfModule>
