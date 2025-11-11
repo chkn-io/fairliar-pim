@@ -90,6 +90,21 @@ class ShopifyService
                                 currencyCode
                             }
                         }
+                        transactions(first: 10) {
+                            gateway
+                            kind
+                            processedAt
+                            amountSet {
+                                presentmentMoney {
+                                    amount
+                                    currencyCode
+                                }
+                            }
+                        }
+                        customer {
+                            email
+                            phone
+                        }
                         shippingAddress {
                             name
                             address1
@@ -166,6 +181,11 @@ class ShopifyService
                 'total_price' => $order['totalPriceSet']['shopMoney']['amount'] ?? '0.00',
                 'currency' => $order['totalPriceSet']['shopMoney']['currencyCode'] ?? 'USD',
                 'cursor' => $edge['cursor'],
+                'customer' => [
+                    'email' => $order['customer']['email'] ?? '',
+                    'phone' => $order['customer']['phone'] ?? '',
+                ],
+                'transactions' => [],
                 'shipping_address' => [
                     'name' => $order['shippingAddress']['name'] ?? '',
                     'address1' => $order['shippingAddress']['address1'] ?? '',
@@ -177,6 +197,17 @@ class ShopifyService
                 'line_items' => [],
                 'fulfillment_orders' => []
             ];
+
+            // Format transactions
+            foreach ($order['transactions'] ?? [] as $transaction) {
+                $formattedOrder['transactions'][] = [
+                    'kind' => strtoupper($transaction['kind'] ?? 'UNKNOWN'),
+                    'gateway' => $transaction['gateway'] ?? 'unknown',
+                    'processed_at' => $transaction['processedAt'] ?? null,
+                    'amount' => $transaction['amountSet']['presentmentMoney']['amount'] ?? '0.00',
+                    'currency' => $transaction['amountSet']['presentmentMoney']['currencyCode'] ?? 'USD'
+                ];
+            }
 
             // Get fulfillment information directly from fulfillmentOrders
             $fulfillmentInfo = [];

@@ -95,6 +95,8 @@ class OrderController extends Controller
                 'Order ID',
                 'Date Created',
                 'Customer Name',
+                'Customer Email',
+                'Customer Phone',
                 'Shipping Address',
                 'City',
                 'Province',
@@ -107,6 +109,9 @@ class OrderController extends Controller
                 'Line Total',
                 'Fulfillment Location',
                 'Fulfillment Status',
+                'Transaction Kind',
+                'Transaction Gateway',
+                'Transaction Amount',
                 'Order Total',
                 'Currency'
             ]);
@@ -117,6 +122,8 @@ class OrderController extends Controller
                     $order['id'],
                     date('Y-m-d H:i:s', strtotime($order['created_at'])),
                     $order['shipping_address']['name'],
+                    $order['customer']['email'] ?? '',
+                    $order['customer']['phone'] ?? '',
                     $order['shipping_address']['address1'],
                     $order['shipping_address']['city'],
                     $order['shipping_address']['province'],
@@ -124,10 +131,24 @@ class OrderController extends Controller
                     $order['shipping_address']['zip']
                 ];
 
+                // Get transaction info for CSV
+                $transactionInfo = '';
+                $transactionGateway = '';
+                $transactionAmount = '';
+                
+                if (!empty($order['transactions'])) {
+                    $transaction = $order['transactions'][0]; // Use first transaction
+                    $transactionInfo = $transaction['kind'];
+                    $transactionGateway = $transaction['gateway'];
+                    $transactionAmount = number_format($transaction['amount'], 2);
+                }
+
                 if (empty($order['line_items'])) {
                     // Order with no line items
                     fputcsv($file, array_merge($baseOrderData, [
-                        '', '', '', '', '', '', '', $order['total_price'], $order['currency']
+                        '', '', '', '', '', '', '', 
+                        $transactionInfo, $transactionGateway, $transactionAmount,
+                        $order['total_price'], $order['currency']
                     ]));
                 } else {
                     // One row per line item
@@ -140,6 +161,7 @@ class OrderController extends Controller
                             number_format($item['price'] * $item['quantity'], 2),
                             $item['fulfillment_location'],
                             $item['fulfillment_status'],
+                            $transactionInfo, $transactionGateway, $transactionAmount,
                             $order['total_price'],
                             $order['currency']
                         ]));

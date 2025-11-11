@@ -181,9 +181,12 @@
                             <tr>
                                 <th>Order</th>
                                 <th>Date</th>
-                                <th>Customer</th>
+                                <th>Customer Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
                                 <th>Shipping Address</th>
                                 <th>Items & Fulfillment</th>
+                                <th>Transaction</th>
                                 <th>Total</th>
                                 <th>Actions</th>
                             </tr>
@@ -200,8 +203,18 @@
                                     <br><small class="text-muted">{{ date('g:i A', strtotime($order['created_at'])) }}</small>
                                 </td>
                                 <td>
-                                    <div class="address-cell">
+                                    <div class="customer-cell">
                                         {{ $order['shipping_address']['name'] ?: 'N/A' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="customer-cell" title="{{ $order['customer']['email'] }}">
+                                        {{ $order['customer']['email'] ?: 'N/A' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="customer-cell">
+                                        {{ $order['customer']['phone'] ?: 'N/A' }}
                                     </div>
                                 </td>
                                 <td>
@@ -254,6 +267,26 @@
                                                 </div>
                                             </div>
                                         @endforeach
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="transaction-cell">
+                                        @if(!empty($order['transactions']))
+                                            @foreach($order['transactions'] as $transaction)
+                                                <div class="mb-1">
+                                                    <small class="text-muted">
+                                                        <strong>{{ $transaction['kind'] }}</strong> - {{ $transaction['gateway'] }}
+                                                        <br>
+                                                        ${{ number_format($transaction['amount'], 2) }} {{ $transaction['currency'] }}
+                                                        @if($transaction['processed_at'])
+                                                            <br><span class="text-muted">{{ date('M j, g:i A', strtotime($transaction['processed_at'])) }}</span>
+                                                        @endif
+                                                    </small>
+                                                </div>
+                                            @endforeach
+                                        @else
+                                            <small class="text-muted">No transactions</small>
+                                        @endif
                                     </div>
                                 </td>
                                 <td>

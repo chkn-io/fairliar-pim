@@ -65,9 +65,19 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .customer-cell {
+            max-width: 150px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .line-items-cell {
             max-width: 350px;
             min-width: 300px;
+        }
+        .transaction-cell {
+            max-width: 200px;
+            min-width: 150px;
         }
         .status-badge {
             font-size: 0.75rem;
@@ -178,7 +188,7 @@
         </div>
     </nav>
 
-    <div class="container">
+    <div class="container-fluid px-3 px-lg-4">
         @if(session('success'))
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 {{ session('success') }}
