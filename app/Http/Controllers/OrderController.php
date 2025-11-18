@@ -27,8 +27,8 @@ class OrderController extends Controller
         // Build query from multiple filters
         $query = $this->buildQuery($request);
         
-        // Get sorting parameters
-        $sortBy = $request->get('sort_by', 'CREATED_AT');
+        // Get sorting parameters - default to ORDER_NUMBER descending
+        $sortBy = $request->get('sort_by', 'ORDER_NUMBER');
         $sortOrder = $request->get('sort_order', 'desc');
         $reverse = $sortOrder === 'desc';
 
@@ -66,8 +66,8 @@ class OrderController extends Controller
     {
         $query = $this->buildQuery($request);
         
-        // Get sorting parameters
-        $sortBy = $request->get('sort_by', 'CREATED_AT');
+        // Get sorting parameters - default to ORDER_NUMBER descending
+        $sortBy = $request->get('sort_by', 'ORDER_NUMBER');
         $sortOrder = $request->get('sort_order', 'desc');
         $reverse = $sortOrder === 'desc';
         
@@ -123,7 +123,7 @@ class OrderController extends Controller
                     date('Y-m-d H:i:s', strtotime($order['created_at'])),
                     $order['shipping_address']['name'],
                     $order['customer']['email'] ?? '',
-                    $order['customer']['phone'] ?? '',
+                    $order['shipping_address']['phone'] ?? '',
                     $order['shipping_address']['address1'],
                     $order['shipping_address']['city'],
                     $order['shipping_address']['province'],
@@ -211,9 +211,9 @@ class OrderController extends Controller
             $queryParts[] = 'created_at:<=' . $dateTo;
         }
         
-        // Default query if no filters applied
+        // Default query if no filters applied - show all recent orders
         if (empty($queryParts)) {
-            return 'fulfillment_status:unfulfilled';
+            return 'created_at:>=' . date('Y-m-d', strtotime('-30 days'));
         }
         
         return implode(' AND ', $queryParts);

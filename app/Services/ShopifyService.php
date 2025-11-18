@@ -107,6 +107,7 @@ class ShopifyService
                         }
                         shippingAddress {
                             name
+                            phone
                             address1
                             city
                             province
@@ -188,6 +189,7 @@ class ShopifyService
                 'transactions' => [],
                 'shipping_address' => [
                     'name' => $order['shippingAddress']['name'] ?? '',
+                    'phone' => $order['shippingAddress']['phone'] ?? '',
                     'address1' => $order['shippingAddress']['address1'] ?? '',
                     'city' => $order['shippingAddress']['city'] ?? '',
                     'province' => $order['shippingAddress']['province'] ?? '',
