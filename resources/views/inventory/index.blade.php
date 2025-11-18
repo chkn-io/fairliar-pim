@@ -3,19 +3,6 @@
 @section('title', 'Inventory Export')
 
 @section('content')
-<!-- Loading Overlay -->
-<div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center;">
-    <div class="text-center">
-        <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <div class="text-light mt-3">
-            <h5 id="loadingText">Processing...</h5>
-            <p id="loadingSubtext">Please wait</p>
-        </div>
-    </div>
-</div>
-
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -116,7 +103,7 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="d-flex gap-2">
-                                <button type="button" onclick="exportInventory()" class="btn btn-success" id="exportBtn">
+                                <button type="button" onclick="exportInventory()" class="btn btn-success">
                                     <i class="bi bi-download"></i> Export to CSV
                                 </button>
                                 <a href="{{ route('inventory.index') }}" class="btn btn-outline-secondary">
@@ -218,27 +205,6 @@
                         </tbody>
                     </table>
                 </div>
-                @if(isset($pagination) && ($pagination['has_prev'] || $pagination['has_next']))
-                <div class="card-footer">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <small class="text-muted">Page {{ $pagination['current_page'] }} - Showing {{ $pagination['total_shown'] }} items</small>
-                        </div>
-                        <div class="btn-group" role="group">
-                            @if($pagination['has_prev'])
-                                <button type="button" class="btn btn-outline-primary" onclick="goToPage({{ $pagination['current_page'] - 1 }})">
-                                    <i class="bi bi-chevron-left"></i> Previous
-                                </button>
-                            @endif
-                            @if($pagination['has_next'])
-                                <button type="button" class="btn btn-outline-primary" onclick="goToPage({{ $pagination['current_page'] + 1 }})">
-                                    Next <i class="bi bi-chevron-right"></i>
-                                </button>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-                @endif
             </div>
         @endif
 
@@ -265,25 +231,12 @@
 
 @section('scripts')
 <script>
-function showLoading(title = 'Processing...', subtitle = 'Please wait') {
-    document.getElementById('loadingText').textContent = title;
-    document.getElementById('loadingSubtext').textContent = subtitle;
-    document.getElementById('loadingOverlay').style.display = 'flex';
-}
-
-function hideLoading() {
-    document.getElementById('loadingOverlay').style.display = 'none';
-}
-
 function exportInventory() {
-    showLoading('Generating CSV Export', 'Fetching all products from Shopify API...');
-    
     const form = document.getElementById('inventoryFilterForm');
     const formData = new FormData(form);
     
-    // Remove preview and page parameters for export
+    // Remove preview parameter for export
     formData.delete('preview');
-    formData.delete('page');
     
     // Create a new form for export
     const exportForm = document.createElement('form');
@@ -303,43 +256,7 @@ function exportInventory() {
     
     document.body.appendChild(exportForm);
     exportForm.submit();
-    
-    // Hide loading after a delay (CSV download will trigger)
-    setTimeout(() => {
-        hideLoading();
-    }, 3000);
+    document.body.removeChild(exportForm);
 }
-
-function goToPage(page) {
-    showLoading('Loading Page ' + page, 'Fetching inventory data...');
-    
-    const form = document.getElementById('inventoryFilterForm');
-    const formData = new FormData(form);
-    
-    // Build URL with all filters and page number
-    const params = new URLSearchParams();
-    params.append('preview', '1');
-    params.append('page', page);
-    
-    for (let [key, value] of formData.entries()) {
-        if (value && key !== 'preview' && key !== 'page') {
-            params.append(key, value);
-        }
-    }
-    
-    window.location.href = '{{ route("inventory.index") }}?' + params.toString();
-}
-
-// Show loading on form submit
-document.getElementById('inventoryFilterForm').addEventListener('submit', function(e) {
-    if (e.submitter && e.submitter.name === 'preview') {
-        showLoading('Loading Preview', 'Fetching inventory data...');
-    }
-});
-
-// Hide loading when page loads
-window.addEventListener('load', function() {
-    hideLoading();
-});
 </script>
 @endsection

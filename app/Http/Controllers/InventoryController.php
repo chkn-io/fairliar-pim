@@ -32,32 +32,24 @@ class InventoryController extends Controller
             'vendor' => $request->get('vendor', ''),
             'status' => $request->get('status', 'active'),
             'sku_filter' => $request->get('sku_filter', ''),
-            'page' => max(1, (int)$request->get('page', 1)),
         ];
 
         $inventory = [];
         $errors = [];
-        $pagination = [
-            'current_page' => $filters['page'],
-            'has_next' => false,
-            'has_prev' => $filters['page'] > 1,
-            'total_shown' => 0
-        ];
 
         if ($request->has('preview')) {
-            // Get inventory data for preview with pagination
+            // Get inventory data for preview (first page only)
             try {
-                $result = $this->shopifyService->getInventoryPage(
+                $result = $this->shopifyService->getInventory(
                     $filters['location_id'],
                     $filters['product_type'],
                     $filters['vendor'],
-                    50,
-                    $filters['page']
+                    50,  // Fetch 50 products to stay under API cost limit
+                    false  // Don't fetch all pages for preview
                 );
 
                 $errors = $result['errors'] ?? [];
                 $inventory = $result['inventory'] ?? [];
-                $pagination['has_next'] = $result['has_next_page'] ?? false;
                 
                 // Apply additional filters
                 if ($filters['sku_filter']) {
@@ -72,15 +64,14 @@ class InventoryController extends Controller
                     });
                 }
                 
-                $pagination['total_shown'] = count($inventory);
-                
+                // Data is already limited by API call
             } catch (\Exception $e) {
                 $errors[] = 'Failed to fetch inventory data: ' . $e->getMessage();
                 $inventory = [];
             }
         }
 
-        return view('inventory.index', compact('locations', 'filters', 'inventory', 'errors', 'pagination'));
+        return view('inventory.index', compact('locations', 'filters', 'inventory', 'errors'));
     }
 
     /**
