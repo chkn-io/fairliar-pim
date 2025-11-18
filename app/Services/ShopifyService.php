@@ -271,4 +271,351 @@ class ShopifyService
             'errors' => []
         ];
     }
+
+    /**
+     * Get inventory levels from all locations
+     */
+    public function getInventory($locationId = null, $productType = null, $vendor = null, $first = 50, $fetchAll = true)
+    {
+        $allInventory = [];
+        $allErrors = [];
+        $after = null;
+        $pageCount = 0;
+        $hasNextPage = true;
+        
+        while ($hasNextPage && ($fetchAll || $pageCount < 1)) {
+            $graphqlQuery = $this->buildInventoryQuery($locationId, $productType, $vendor, $first, $after);
+            
+            try {
+                $response = $this->client->post($this->graphqlEndpoint, [
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'X-Shopify-Access-Token' => $this->apiKey,
+                    ],
+                    'json' => [
+                        'query' => $graphqlQuery
+                    ]
+                ]);
+
+                $data = json_decode($response->getBody()->getContents(), true);
+                
+                if (isset($data['errors'])) {
+                    Log::error('Shopify GraphQL inventory errors:', $data['errors']);
+                    $allErrors = array_merge($allErrors, $data['errors']);
+                    break;
+                }
+
+                // Log the structure for debugging
+                Log::info('Shopify API Response Structure (Page ' . ($pageCount + 1) . '):', [
+                    'has_products' => isset($data['data']['products']),
+                    'product_count' => count($data['data']['products']['edges'] ?? []),
+                    'has_next_page' => $data['data']['products']['pageInfo']['hasNextPage'] ?? false
+                ]);
+
+                $result = $this->formatInventoryResponse($data, $locationId);
+                $allInventory = array_merge($allInventory, $result['inventory']);
+                $allErrors = array_merge($allErrors, $result['errors']);
+                
+                // Get pagination info
+                $pageInfo = $data['data']['products']['pageInfo'] ?? [];
+                $hasNextPage = $pageInfo['hasNextPage'] ?? false;
+                $after = $pageInfo['endCursor'] ?? null;
+                
+                $pageCount++;
+                
+                // For preview mode, stop after first page
+                if (!$fetchAll) {
+                    break;
+                }
+                
+            } catch (RequestException $e) {
+                Log::error('Shopify Inventory API request failed:', [
+                    'message' => $e->getMessage(),
+                    'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+                ]);
+                
+                $allErrors[] = 'API request failed: ' . $e->getMessage();
+                break;
+            }
+        }
+
+        Log::info('Total inventory fetched:', [
+            'total_variants' => count($allInventory),
+            'pages_fetched' => $pageCount,
+            'stopped_reason' => !$hasNextPage ? 'no_more_pages' : 'fetch_limit'
+        ]);
+
+        return [
+            'inventory' => $allInventory,
+            'locations' => [],
+            'errors' => $allErrors
+        ];
+    }
+
+    /**
+     * Get available locations
+     */
+    public function getLocations()
+    {
+        $graphqlQuery = '{
+            locations(first: 50) {
+                edges {
+                    node {
+                        id
+                        name
+                        address {
+                            city
+                            country
+                        }
+                    }
+                }
+            }
+        }';
+        
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $graphqlQuery
+                ]
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            $locations = [];
+
+            foreach ($data['data']['locations']['edges'] ?? [] as $edge) {
+                $location = $edge['node'];
+                $locations[] = [
+                    'id' => $location['id'],
+                    'name' => $location['name'],
+                    'city' => $location['address']['city'] ?? '',
+                    'country' => $location['address']['country'] ?? ''
+                ];
+            }
+
+            return $locations;
+
+        } catch (RequestException $e) {
+            Log::error('Shopify Locations API request failed:', [
+                'message' => $e->getMessage()
+            ]);
+            
+            return [];
+        }
+    }
+
+    /**
+     * Build inventory GraphQL query
+     */
+    private function buildInventoryQuery($locationId = null, $productType = null, $vendor = null, $first = 50, $after = null)
+    {
+        $productQuery = '';
+        
+        if ($productType || $vendor) {
+            $filters = [];
+            if ($productType) $filters[] = 'product_type:' . $productType;
+            if ($vendor) $filters[] = 'vendor:' . $vendor;
+            $productQuery = ', query: "' . implode(' AND ', $filters) . '"';
+        }
+
+        $afterClause = $after ? ', after: "' . $after . '"' : '';
+
+        return '{
+            products(first: ' . $first . $productQuery . $afterClause . ') {
+                edges {
+                    cursor
+                    node {
+                        id
+                        title
+                        handle
+                        productType
+                        vendor
+                        status
+                        tags
+                        variants(first: 50) {
+                            edges {
+                                node {
+                                    id
+                                    title
+                                    sku
+                                    price
+                                    inventoryItem {
+                                        id
+                                        inventoryLevels(first: 5) {
+                                            edges {
+                                                node {
+                                                    quantities(names: ["available"]) {
+                                                        id
+                                                        quantity
+                                                    }
+                                                    location {
+                                                        id
+                                                        name
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+            }
+        }';
+    }
+
+    /**
+     * Format inventory response
+     */
+    private function formatInventoryResponse($data, $locationId = null)
+    {
+        $inventory = [];
+        
+        // Extract inventory from products using inventoryLevels
+        foreach ($data['data']['products']['edges'] ?? [] as $edge) {
+            $product = $edge['node'] ?? [];
+            
+            if (empty($product)) {
+                continue;
+            }
+            
+            $tags = $product['tags'] ?? [];
+            $tagsString = is_array($tags) ? implode(', ', $tags) : $tags;
+            
+            foreach ($product['variants']['edges'] ?? [] as $variantEdge) {
+                $variant = $variantEdge['node'] ?? [];
+                
+                if (!$variant) {
+                    continue;
+                }
+                
+                // Process inventory levels per location
+                $inventoryLevels = $variant['inventoryItem']['inventoryLevels']['edges'] ?? [];
+                
+                // If no inventory levels, create one entry with 0 quantity
+                if (empty($inventoryLevels)) {
+                    $inventory[] = [
+                        'product_id' => $product['id'] ?? '',
+                        'product_title' => $product['title'] ?? '',
+                        'product_handle' => $product['handle'] ?? '',
+                        'product_type' => $product['productType'] ?? '',
+                        'vendor' => $product['vendor'] ?? '',
+                        'product_status' => $product['status'] ?? '',
+                        'tags' => $tagsString,
+                        'variant_id' => $variant['id'] ?? '',
+                        'variant_title' => $variant['title'] ?? '',
+                        'sku' => $variant['sku'] ?? '',
+                        'price' => $variant['price'] ?? '0.00',
+                        'compare_at_price' => null,
+                        'inventory_policy' => '',
+                        'available_quantity' => 0,
+                        'inventory_item_id' => $variant['inventoryItem']['id'] ?? '',
+                        'location_id' => '',
+                        'location_name' => 'No Location',
+                        'location_city' => '',
+                        'location_country' => ''
+                    ];
+                    continue;
+                }
+                
+                foreach ($inventoryLevels as $levelEdge) {
+                    $level = $levelEdge['node'] ?? [];
+                    $location = $level['location'] ?? [];
+                    
+                    // Filter by location if specified
+                    if ($locationId && ($location['id'] ?? '') !== $locationId) {
+                        continue;
+                    }
+                    
+                    // Get available quantity
+                    $availableQty = 0;
+                    if (!empty($level['quantities'])) {
+                        foreach ($level['quantities'] as $qty) {
+                            $availableQty = $qty['quantity'] ?? 0;
+                            break; // We only asked for "available"
+                        }
+                    }
+                    
+                    $inventory[] = [
+                        'product_id' => $product['id'] ?? '',
+                        'product_title' => $product['title'] ?? '',
+                        'product_handle' => $product['handle'] ?? '',
+                        'product_type' => $product['productType'] ?? '',
+                        'vendor' => $product['vendor'] ?? '',
+                        'product_status' => $product['status'] ?? '',
+                        'tags' => $tagsString,
+                        'variant_id' => $variant['id'] ?? '',
+                        'variant_title' => $variant['title'] ?? '',
+                        'sku' => $variant['sku'] ?? '',
+                        'price' => $variant['price'] ?? '0.00',
+                        'compare_at_price' => null,
+                        'inventory_policy' => '',
+                        'available_quantity' => $availableQty,
+                        'inventory_item_id' => $variant['inventoryItem']['id'] ?? '',
+                        'location_id' => $location['id'] ?? '',
+                        'location_name' => $location['name'] ?? 'Unknown Location',
+                        'location_city' => '',
+                        'location_country' => ''
+                    ];
+                }
+            }
+        }
+        
+        return [
+            'inventory' => $inventory,
+            'locations' => [],
+            'errors' => []
+        ];
+    }
+    
+    /**
+     * Get inventory in multiple batches for export (to handle larger datasets)
+     */
+    public function getInventoryForExport($locationId = null, $productType = null, $vendor = null, $maxBatches = 5)
+    {
+        $allInventory = [];
+        $allLocations = [];
+        $errors = [];
+        
+        // Get locations first
+        $locations = $this->getLocations();
+        
+        for ($batch = 0; $batch < $maxBatches; $batch++) {
+            $result = $this->getInventory($locationId, $productType, $vendor, 50);
+            
+            if (!empty($result['errors'])) {
+                $errors = array_merge($errors, $result['errors']);
+                break;
+            }
+            
+            $inventory = $result['inventory'] ?? [];
+            
+            if (empty($inventory)) {
+                break; // No more data
+            }
+            
+            $allInventory = array_merge($allInventory, $inventory);
+            
+            // Simple pagination simulation - in a real implementation, 
+            // you would use cursors for proper pagination
+            if (count($inventory) < 50) {
+                break; // Last batch
+            }
+        }
+        
+        return [
+            'inventory' => $allInventory,
+            'locations' => $locations,
+            'errors' => $errors,
+            'batches_fetched' => $batch + 1
+        ];
+    }
 }

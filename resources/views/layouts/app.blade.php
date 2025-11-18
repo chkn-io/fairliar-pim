@@ -145,6 +145,9 @@
                     <a class="nav-link" href="{{ route('orders.index') }}">
                         <i class="bi bi-list-ul"></i> Orders
                     </a>
+                    <a class="nav-link" href="{{ route('inventory.index') }}">
+                        <i class="bi bi-boxes"></i> Inventory
+                    </a>
                     @auth
                         @if(Auth::user()->isAdmin())
                             <a class="nav-link" href="{{ route('users.index') }}">

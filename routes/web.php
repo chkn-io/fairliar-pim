@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\UserController;
 
@@ -30,6 +31,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/export', [OrderController::class, 'export'])->name('orders.export');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+
+    // Inventory routes
+    Route::get('/inventory', [InventoryController::class, 'index'])->name('inventory.index');
+    Route::get('/inventory/export', [InventoryController::class, 'export'])->name('inventory.export');
 
     // Admin only routes for user management
     Route::middleware('admin')->group(function () {

@@ -27,7 +27,7 @@
 
         <!-- Quick Stats -->
         <div class="row g-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card h-100">
                     <div class="card-body text-center">
                         <i class="bi bi-bag-check text-success mb-3" style="font-size: 2rem;"></i>
@@ -40,10 +40,23 @@
                 </div>
             </div>
             
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card h-100">
                     <div class="card-body text-center">
-                        <i class="bi bi-download text-info mb-3" style="font-size: 2rem;"></i>
+                        <i class="bi bi-boxes text-info mb-3" style="font-size: 2rem;"></i>
+                        <h5 class="card-title">Inventory</h5>
+                        <p class="text-muted">Export inventory data by location with advanced filters</p>
+                        <a href="{{ route('inventory.index') }}" class="btn btn-outline-primary btn-sm">
+                            Export Inventory
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-download text-warning mb-3" style="font-size: 2rem;"></i>
                         <h5 class="card-title">Export</h5>
                         <p class="text-muted">Export filtered orders to CSV for analysis and reporting</p>
                         <a href="{{ route('orders.index') }}" class="btn btn-outline-primary btn-sm">
@@ -54,10 +67,10 @@
             </div>
             
             @if(Auth::user()->isAdmin())
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card h-100">
                     <div class="card-body text-center">
-                        <i class="bi bi-people text-warning mb-3" style="font-size: 2rem;"></i>
+                        <i class="bi bi-people text-primary mb-3" style="font-size: 2rem;"></i>
                         <h5 class="card-title">Users</h5>
                         <p class="text-muted">Manage user accounts and permissions</p>
                         <a href="{{ route('users.index') }}" class="btn btn-outline-primary btn-sm">
@@ -67,7 +80,7 @@
                 </div>
             </div>
             @else
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card h-100">
                     <div class="card-body text-center">
                         <i class="bi bi-funnel text-secondary mb-3" style="font-size: 2rem;"></i>
