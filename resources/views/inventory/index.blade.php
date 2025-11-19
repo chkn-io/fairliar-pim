@@ -128,7 +128,7 @@
                             <div class="text-end">
                                 <small class="text-muted">
                                     <i class="bi bi-info-circle"></i> 
-                                    Preview shows first 50 products. Export automatically paginates to fetch ALL products.
+                                    Preview shows first 20 products (with up to 75 variants and 10 locations each). Export fetches ALL products with full pagination.
                                 </small>
                             </div>
                         </div>

@@ -277,15 +277,28 @@ class ShopifyService
     /**
      * Get inventory levels from all locations
      */
-    public function getInventory($locationId = null, $productType = null, $vendor = null, $first = 50, $fetchAll = true)
+    public function getInventory($locationId = null, $productType = null, $vendor = null, $first = 20, $fetchAll = true)
     {
         $allInventory = [];
         $allErrors = [];
         $after = null;
         $pageCount = 0;
         $hasNextPage = true;
+        $maxIterations = 200; // Safety limit to prevent infinite loops
         
-        while ($hasNextPage && ($fetchAll || $pageCount < 1)) {
+        Log::info('Starting inventory fetch:', [
+            'location_id' => $locationId ?? 'all',
+            'fetch_all' => $fetchAll,
+            'products_per_page' => $first
+        ]);
+        
+        while ($hasNextPage && $pageCount < $maxIterations) {
+            // For preview mode, only fetch first page
+            if (!$fetchAll && $pageCount >= 1) {
+                Log::info('Preview mode: stopping after first page');
+                break;
+            }
+            
             $graphqlQuery = $this->buildInventoryQuery($locationId, $productType, $vendor, $first, $after);
             
             try {
@@ -307,26 +320,48 @@ class ShopifyService
                     break;
                 }
 
+                // Get pagination info first
+                $pageInfo = $data['data']['products']['pageInfo'] ?? [];
+                $currentHasNextPage = $pageInfo['hasNextPage'] ?? false;
+                $currentCursor = $pageInfo['endCursor'] ?? null;
+
                 // Log the structure for debugging
                 Log::info('Shopify API Response Structure (Page ' . ($pageCount + 1) . '):', [
                     'has_products' => isset($data['data']['products']),
                     'product_count' => count($data['data']['products']['edges'] ?? []),
-                    'has_next_page' => $data['data']['products']['pageInfo']['hasNextPage'] ?? false
+                    'has_next_page' => $currentHasNextPage,
+                    'end_cursor' => $currentCursor ?? 'none',
+                    'variants_in_response' => array_sum(array_map(function($edge) {
+                        return count($edge['node']['variants']['edges'] ?? []);
+                    }, $data['data']['products']['edges'] ?? []))
                 ]);
 
                 $result = $this->formatInventoryResponse($data, $locationId);
                 $allInventory = array_merge($allInventory, $result['inventory']);
                 $allErrors = array_merge($allErrors, $result['errors']);
                 
-                // Get pagination info
-                $pageInfo = $data['data']['products']['pageInfo'] ?? [];
-                $hasNextPage = $pageInfo['hasNextPage'] ?? false;
-                $after = $pageInfo['endCursor'] ?? null;
+                Log::info('Progress after page ' . ($pageCount + 1) . ':', [
+                    'total_inventory_items' => count($allInventory),
+                    'new_items_this_page' => count($result['inventory']),
+                    'running_total' => count($allInventory)
+                ]);
+                
+                // Update pagination variables
+                $hasNextPage = $currentHasNextPage;
+                $after = $currentCursor;
                 
                 $pageCount++;
                 
-                // For preview mode, stop after first page
-                if (!$fetchAll) {
+                Log::info('Pagination status:', [
+                    'page_just_completed' => $pageCount,
+                    'has_next_page' => $hasNextPage,
+                    'will_continue' => ($hasNextPage && $fetchAll),
+                    'cursor' => $after ?? 'none'
+                ]);
+                
+                // If no more pages, stop
+                if (!$hasNextPage) {
+                    Log::info('No more pages available, stopping pagination');
                     break;
                 }
                 
@@ -341,10 +376,15 @@ class ShopifyService
             }
         }
 
-        Log::info('Total inventory fetched:', [
+        Log::info('===== INVENTORY FETCH COMPLETE =====', [
             'total_variants' => count($allInventory),
+            'total_unique_products' => count(array_unique(array_column($allInventory, 'product_id'))),
             'pages_fetched' => $pageCount,
-            'stopped_reason' => !$hasNextPage ? 'no_more_pages' : 'fetch_limit'
+            'stopped_reason' => !$hasNextPage ? 'no_more_pages' : ($pageCount >= $maxIterations ? 'max_iterations' : 'other'),
+            'last_cursor' => $after ?? 'none',
+            'location_filter' => $locationId ?? 'all',
+            'fetch_all_mode' => $fetchAll,
+            'last_has_next_page' => $hasNextPage
         ]);
 
         return [
@@ -357,7 +397,7 @@ class ShopifyService
     /**
      * Get a single page of inventory for pagination
      */
-    public function getInventoryPage($locationId = null, $productType = null, $vendor = null, $first = 50, $page = 1)
+    public function getInventoryPage($locationId = null, $productType = null, $vendor = null, $first = 20, $page = 1)
     {
         // Calculate cursor position based on page number
         // We'll need to fetch pages sequentially to get the right cursor
@@ -511,7 +551,7 @@ class ShopifyService
                         vendor
                         status
                         tags
-                        variants(first: 50) {
+                        variants(first: 75) {
                             edges {
                                 node {
                                     id
@@ -520,7 +560,7 @@ class ShopifyService
                                     price
                                     inventoryItem {
                                         id
-                                        inventoryLevels(first: 5) {
+                                        inventoryLevels(first: 10) {
                                             edges {
                                                 node {
                                                     quantities(names: ["available"]) {

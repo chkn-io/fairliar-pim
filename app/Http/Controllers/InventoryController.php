@@ -51,7 +51,7 @@ class InventoryController extends Controller
                     $filters['location_id'],
                     $filters['product_type'],
                     $filters['vendor'],
-                    50,
+                    20,  // Fetch 20 products to stay under API cost limit
                     $filters['page']
                 );
 
@@ -102,7 +102,7 @@ class InventoryController extends Controller
             $filters['location_id'],
             $filters['product_type'],
             $filters['vendor'],
-            50,  // Fetch 50 products per page to stay under API cost limit
+            20,  // Fetch 20 products per page (with 75 variants, 10 locations each)
             true   // Fetch all pages (will automatically paginate through all products)
         );
 
