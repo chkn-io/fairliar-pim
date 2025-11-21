@@ -166,9 +166,9 @@
                             <td><code>{{ $item['barcode'] ?: '-' }}</code></td>
                             <td class="text-center">
                                 @if($isSyncEnabled)
-                                    <span class="badge bg-success" title="This variant is included in PIM sync">✓ Synced</span>
+                                    <span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>
                                 @else
-                                    <span class="badge bg-warning text-dark" title="This variant is excluded from PIM sync">✗ Not Synced</span>
+                                    <span class="badge bg-warning text-dark" title="This variant is excluded from PIM sync">✗ Excluded</span>
                                 @endif
                             </td>
                             <td class="text-center">
