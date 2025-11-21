@@ -80,35 +80,7 @@
         </div>
     </div>
 
-    <!-- Summary Stats -->
-    @if($totalVariants > 0)
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <h5 class="card-title">Total Variants</h5>
-                    <h2>{{ number_format($totalVariants) }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card bg-info text-white">
-                <div class="card-body">
-                    <h5 class="card-title">Warehouse Variants</h5>
-                    <h2>{{ number_format($warehouseVariantsCount) }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <h5 class="card-title">Showing</h5>
-                    <h2>{{ count($syncData) }} / {{ number_format($totalVariants) }}</h2>
-                </div>
-            </div>
-        </div>
-    </div>
-    @endif
+   
 
     <!-- Results Table -->
     @if(count($syncData) > 0)
@@ -191,35 +163,39 @@
                                 @endif
                             </td>
                             <td class="text-center">
-                                <div class="btn-group-vertical btn-group-sm" role="group">
+                                <div class="d-flex gap-1 justify-content-center flex-wrap">
                                     <!-- View on Shopify -->
                                     <a href="https://{{ $storeDomain }}/admin/products/{{ $item['product_id'] }}/variants/{{ $item['variant_id'] }}" 
                                        target="_blank" 
-                                       class="btn btn-outline-primary btn-sm"
-                                       title="View variant on Shopify">
-                                        <i class="bi bi-box-arrow-up-right"></i> Shopify
+                                       class="btn btn-sm btn-outline-secondary"
+                                       title="View variant on Shopify"
+                                       style="min-width: 80px;">
+                                        <i class="bi bi-box-arrow-up-right"></i> View
                                     </a>
                                     
                                     <!-- Toggle PIM Sync -->
                                     @if($isSyncEnabled)
                                         <button onclick="togglePimSync('{{ $item['variant_gid'] }}', '{{ $item['product_gid'] }}', '{{ addslashes($item['product_title']) }}', true)" 
-                                                class="btn btn-outline-warning btn-sm"
-                                                title="Exclude this variant from PIM sync">
+                                                class="btn btn-sm btn-warning"
+                                                title="Exclude this variant from PIM sync"
+                                                style="min-width: 80px;">
                                             <i class="bi bi-x-circle"></i> Exclude
                                         </button>
                                     @else
                                         <button onclick="togglePimSync('{{ $item['variant_gid'] }}', '{{ $item['product_gid'] }}', '{{ addslashes($item['product_title']) }}', false)" 
-                                                class="btn btn-outline-success btn-sm"
-                                                title="Include this variant in PIM sync">
+                                                class="btn btn-sm btn-success"
+                                                title="Include this variant in PIM sync"
+                                                style="min-width: 80px;">
                                             <i class="bi bi-check-circle"></i> Include
                                         </button>
                                     @endif
                                     
                                     <!-- Sync Stock (only show if variant is included in sync) -->
                                     @if($isSyncEnabled && $item['warehouse_stock'] !== null && $selectedLocation)
-                                        <button onclick="syncStock('{{ $item['variant_id'] }}', '{{ $item['inventory_item_id'] }}', '{{ $selectedLocation }}', {{ $item['warehouse_stock'] }}, '{{ addslashes($item['product_title']) }}', '{{ $item['variant_title'] }}')" 
-                                                class="btn btn-outline-info btn-sm"
+                                        <button onclick="syncStock('{{ $item['variant_id'] }}', '{{ $item['inventory_item_id'] }}', '{{ $selectedLocation }}', {{ $item['warehouse_stock'] }}, '{{ addslashes($item['product_title']) }}', '{{ addslashes($item['variant_title']) }}')" 
+                                                class="btn btn-sm btn-info"
                                                 title="Sync stock from warehouse to Shopify"
+                                                style="min-width: 80px;"
                                                 {{ $item['shopify_stock'] == $item['warehouse_stock'] ? 'disabled' : '' }}>
                                             <i class="bi bi-arrow-repeat"></i> Sync
                                         </button>
