@@ -148,6 +148,9 @@
                     <a class="nav-link" href="{{ route('inventory.index') }}">
                         <i class="bi bi-boxes"></i> Inventory
                     </a>
+                    <a class="nav-link" href="{{ route('stock-sync.index') }}">
+                        <i class="bi bi-arrow-repeat"></i> Stock Sync
+                    </a>
                     @auth
                         @if(Auth::user()->isAdmin())
                             <a class="nav-link" href="{{ route('users.index') }}">
@@ -155,6 +158,9 @@
                             </a>
                             <a class="nav-link" href="{{ route('users.create') }}">
                                 <i class="bi bi-person-plus"></i> Add User
+                            </a>
+                            <a class="nav-link" href="{{ route('settings.warehouse') }}">
+                                <i class="bi bi-gear"></i> Settings
                             </a>
                         @endif
                     @endauth

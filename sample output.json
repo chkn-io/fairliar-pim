@@ -1,0 +1,1048 @@
+{
+    "data": [
+        {
+            "id": 531,
+            "no": "1",
+            "product_id": "152",
+            "variant_name": "2XS",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 8451,
+                    "variant_id": 531,
+                    "warehouse_id": "1",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 11084,
+                    "variant_id": 531,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8248,
+                    "variant_id": 531,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 16
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 8451,
+                    "variant_id": 531,
+                    "warehouse_id": "1",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 11084,
+                    "variant_id": 531,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8248,
+                    "variant_id": 531,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 16
+                }
+            ],
+            "stock": 16,
+            "cost_price": 50025,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "531",
+                    "shop_id": "18",
+                    "option_code": "FS5SK16FDG2XS"
+                },
+                {
+                    "option_id": "531",
+                    "shop_id": "28",
+                    "option_code": "44326301827244"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FS5SK16FDG2XS",
+            "barcode2": "",
+            "barcode3": "8900002533433",
+            "sguid": "A7RS0000531",
+            "link_code": "000B",
+            "custom1": "DG",
+            "custom2": "C345366",
+            "custom3": "",
+            "custom4": "",
+            "custom5": "",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-03-13 12:52:22",
+            "updated_at": "2025-11-19 19:48:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "다크그린",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 532,
+            "no": "2",
+            "product_id": "152",
+            "variant_name": "XS",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11085,
+                    "variant_id": 532,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8249,
+                    "variant_id": 532,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 39
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11085,
+                    "variant_id": 532,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8249,
+                    "variant_id": 532,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 39
+                }
+            ],
+            "stock": 39,
+            "cost_price": 50025,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "532",
+                    "shop_id": "18",
+                    "option_code": "FS5SK16FDGXS"
+                },
+                {
+                    "option_id": "532",
+                    "shop_id": "28",
+                    "option_code": "44326301958316"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FS5SK16FDGXS",
+            "barcode2": "",
+            "barcode3": "8900002533419",
+            "sguid": "A7RS0000532",
+            "link_code": "000C",
+            "custom1": "DG",
+            "custom2": "C345367",
+            "custom3": "",
+            "custom4": "",
+            "custom5": "",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-03-13 12:52:22",
+            "updated_at": "2025-11-19 19:48:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "다크그린",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 533,
+            "no": "3",
+            "product_id": "152",
+            "variant_name": "S",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11086,
+                    "variant_id": 533,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8250,
+                    "variant_id": 533,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 45
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11086,
+                    "variant_id": 533,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8250,
+                    "variant_id": 533,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 45
+                }
+            ],
+            "stock": 45,
+            "cost_price": 50025,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "533",
+                    "shop_id": "18",
+                    "option_code": "FS5SK16FDGS"
+                },
+                {
+                    "option_id": "533",
+                    "shop_id": "28",
+                    "option_code": "44326301925548"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FS5SK16FDGS",
+            "barcode2": "",
+            "barcode3": "8900002533440",
+            "sguid": "A7RS0000533",
+            "link_code": "000D",
+            "custom1": "DG",
+            "custom2": "C345368",
+            "custom3": "",
+            "custom4": "",
+            "custom5": "",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-03-13 12:52:22",
+            "updated_at": "2025-11-19 19:48:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "다크그린",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 534,
+            "no": "4",
+            "product_id": "152",
+            "variant_name": "M",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11087,
+                    "variant_id": 534,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8251,
+                    "variant_id": 534,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 15
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11087,
+                    "variant_id": 534,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8251,
+                    "variant_id": 534,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 15
+                }
+            ],
+            "stock": 15,
+            "cost_price": 50025,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "534",
+                    "shop_id": "18",
+                    "option_code": "FS5SK16FDGM"
+                },
+                {
+                    "option_id": "534",
+                    "shop_id": "28",
+                    "option_code": "44326301892780"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FS5SK16FDGM",
+            "barcode2": "",
+            "barcode3": "8900002533402",
+            "sguid": "A7RS0000534",
+            "link_code": "000E",
+            "custom1": "DG",
+            "custom2": "C345369",
+            "custom3": "",
+            "custom4": "",
+            "custom5": "",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-03-13 12:52:22",
+            "updated_at": "2025-11-19 19:48:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "다크그린",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 535,
+            "no": "5",
+            "product_id": "152",
+            "variant_name": "L",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11088,
+                    "variant_id": 535,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8252,
+                    "variant_id": 535,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11088,
+                    "variant_id": 535,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8252,
+                    "variant_id": 535,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "stock": 0,
+            "cost_price": 50025,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "535",
+                    "shop_id": "18",
+                    "option_code": "FS5SK16FDGL"
+                },
+                {
+                    "option_id": "535",
+                    "shop_id": "28",
+                    "option_code": "44326301860012"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FS5SK16FDGL",
+            "barcode2": "",
+            "barcode3": "8900002533426",
+            "sguid": "A7RS0000535",
+            "link_code": "000F",
+            "custom1": "DG",
+            "custom2": "C349155",
+            "custom3": "",
+            "custom4": "",
+            "custom5": "",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-03-13 12:52:22",
+            "updated_at": "2025-11-19 18:20:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "다크그린",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 4777,
+            "no": "1",
+            "product_id": "7137",
+            "variant_name": "2XS",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11795,
+                    "variant_id": 4777,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8160,
+                    "variant_id": 4777,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 11420,
+                    "variant_id": 4777,
+                    "warehouse_id": "23",
+                    "location": "",
+                    "variant_stock": 1
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11795,
+                    "variant_id": 4777,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8160,
+                    "variant_id": 4777,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 11420,
+                    "variant_id": 4777,
+                    "warehouse_id": "23",
+                    "location": "",
+                    "variant_stock": 1
+                }
+            ],
+            "stock": 1,
+            "cost_price": 47835,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "4777",
+                    "shop_id": "18",
+                    "option_code": "FF5SK03FBG2XS"
+                },
+                {
+                    "option_id": "4777",
+                    "shop_id": "28",
+                    "option_code": "44730302955692"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FF5SK03FBG2XS",
+            "barcode2": "",
+            "barcode3": "8900002779558",
+            "sguid": "A7RS0004777",
+            "link_code": "",
+            "custom1": "BG",
+            "custom2": "C383036",
+            "custom3": "12",
+            "custom4": "7",
+            "custom5": "5",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-04-23 11:17:57",
+            "updated_at": "2025-11-19 18:20:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "베이지",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 4778,
+            "no": "2",
+            "product_id": "7137",
+            "variant_name": "L",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11796,
+                    "variant_id": 4778,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8161,
+                    "variant_id": 4778,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 10882,
+                    "variant_id": 4778,
+                    "warehouse_id": "23",
+                    "location": "",
+                    "variant_stock": 1
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11796,
+                    "variant_id": 4778,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8161,
+                    "variant_id": 4778,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 10882,
+                    "variant_id": 4778,
+                    "warehouse_id": "23",
+                    "location": "",
+                    "variant_stock": 1
+                }
+            ],
+            "stock": 1,
+            "cost_price": 47835,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "4778",
+                    "shop_id": "18",
+                    "option_code": "FF5SK03FBGL"
+                },
+                {
+                    "option_id": "4778",
+                    "shop_id": "28",
+                    "option_code": "44730303086764"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FF5SK03FBGL",
+            "barcode2": "",
+            "barcode3": "8900002779527",
+            "sguid": "A7RS0004778",
+            "link_code": "",
+            "custom1": "BG",
+            "custom2": "C383040",
+            "custom3": "10",
+            "custom4": "2",
+            "custom5": "8",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-04-23 11:17:57",
+            "updated_at": "2025-11-19 18:20:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "베이지",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 4779,
+            "no": "3",
+            "product_id": "7137",
+            "variant_name": "M",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11797,
+                    "variant_id": 4779,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8162,
+                    "variant_id": 4779,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11797,
+                    "variant_id": 4779,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8162,
+                    "variant_id": 4779,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "stock": 0,
+            "cost_price": 47835,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "4779",
+                    "shop_id": "18",
+                    "option_code": "FF5SK03FBGM"
+                },
+                {
+                    "option_id": "4779",
+                    "shop_id": "28",
+                    "option_code": "44730303053996"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FF5SK03FBGM",
+            "barcode2": "",
+            "barcode3": "8900002779534",
+            "sguid": "A7RS0004779",
+            "link_code": "",
+            "custom1": "BG",
+            "custom2": "C383039",
+            "custom3": "20",
+            "custom4": "7",
+            "custom5": "13",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-04-23 11:17:57",
+            "updated_at": "2025-11-19 18:20:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "베이지",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 4780,
+            "no": "4",
+            "product_id": "7137",
+            "variant_name": "S",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 11798,
+                    "variant_id": 4780,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8163,
+                    "variant_id": 4780,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 11798,
+                    "variant_id": 4780,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8163,
+                    "variant_id": 4780,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "stock": 0,
+            "cost_price": 47835,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "4780",
+                    "shop_id": "18",
+                    "option_code": "FF5SK03FBGS"
+                },
+                {
+                    "option_id": "4780",
+                    "shop_id": "28",
+                    "option_code": "44730303021228"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FF5SK03FBGS",
+            "barcode2": "",
+            "barcode3": "8900002779541",
+            "sguid": "A7RS0004780",
+            "link_code": "",
+            "custom1": "BG",
+            "custom2": "C383038",
+            "custom3": "33",
+            "custom4": "14",
+            "custom5": "19",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-04-23 11:17:57",
+            "updated_at": "2025-11-19 18:20:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "베이지",
+            "size": "",
+            "en_name": ""
+        },
+        {
+            "id": 4781,
+            "no": "5",
+            "product_id": "7137",
+            "variant_name": "XS",
+            "safe_stock": "0",
+            "variant_stock": [
+                {
+                    "id": 10440,
+                    "variant_id": 4781,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8164,
+                    "variant_id": 4781,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "warehouseVariants": [
+                {
+                    "id": 10440,
+                    "variant_id": 4781,
+                    "warehouse_id": "20",
+                    "location": "",
+                    "variant_stock": 0
+                },
+                {
+                    "id": 8164,
+                    "variant_id": 4781,
+                    "warehouse_id": "21",
+                    "location": "",
+                    "variant_stock": 0
+                }
+            ],
+            "stock": 0,
+            "cost_price": 47835,
+            "option_has_code_by_shop": [
+                {
+                    "option_id": "4781",
+                    "shop_id": "18",
+                    "option_code": "FF5SK03FBGXS"
+                },
+                {
+                    "option_id": "4781",
+                    "shop_id": "28",
+                    "option_code": "44730302988460"
+                }
+            ],
+            "expected_input_at": null,
+            "supply_name": "",
+            "opt_supplier_id": null,
+            "selling_price": "298000",
+            "supply_price": "0",
+            "location": "",
+            "is_selling": "1",
+            "is_soldout": "0",
+            "management_level": "3",
+            "memo": "",
+            "code": "",
+            "barcode1": "FF5SK03FBGXS",
+            "barcode2": "",
+            "barcode3": "8900002779510",
+            "sguid": "A7RS0004781",
+            "link_code": "",
+            "custom1": "BG",
+            "custom2": "C383037",
+            "custom3": "25",
+            "custom4": "10",
+            "custom5": "15",
+            "custom6": null,
+            "custom7": null,
+            "custom8": null,
+            "custom9": null,
+            "custom10": null,
+            "soldout_at": null,
+            "knitting_info_no": "0",
+            "created_by": "fairliar",
+            "updated_by": "fairliar",
+            "created_at": "2025-04-23 11:17:57",
+            "updated_at": "2025-11-19 18:20:00",
+            "is_core": "0",
+            "purchase_status": null,
+            "active": "1",
+            "color": "베이지",
+            "size": "",
+            "en_name": ""
+        }
+    ],
+    "links": {
+        "first": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=1",
+        "last": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=1060",
+        "prev": null,
+        "next": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=2"
+    },
+    "meta": {
+        "current_page": 1,
+        "from": 1,
+        "last_page": 1060,
+        "links": [
+            {
+                "url": null,
+                "label": "&laquo; Previous",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=1",
+                "label": "1",
+                "active": true
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=2",
+                "label": "2",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=3",
+                "label": "3",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=4",
+                "label": "4",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=5",
+                "label": "5",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=6",
+                "label": "6",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=7",
+                "label": "7",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=8",
+                "label": "8",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=9",
+                "label": "9",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=10",
+                "label": "10",
+                "active": false
+            },
+            {
+                "url": null,
+                "label": "...",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=1059",
+                "label": "1059",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=1060",
+                "label": "1060",
+                "active": false
+            },
+            {
+                "url": "https://c-api.sellmate.co.kr/external/fairliar/productVariants?page=2",
+                "label": "Next &raquo;",
+                "active": false
+            }
+        ],
+        "path": "https://c-api.sellmate.co.kr/external/fairliar/productVariants",
+        "per_page": 10,
+        "to": 10,
+        "total": 10593
+    }
+}

@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'warehouse' => [
+        'api_url' => env('WAREHOUSE_API_URL', 'https://c-api.sellmate.co.kr/external/fairliar/productVariants'),
+        'api_token' => env('WAREHOUSE_API_TOKEN'),
+    ],
+
 ];

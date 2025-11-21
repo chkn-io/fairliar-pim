@@ -734,4 +734,332 @@ class ShopifyService
             'batches_fetched' => $batch + 1
         ];
     }
+
+    /**
+     * Build GraphQL query for product variants with inventory
+     * Using productVariants query directly for consistent pagination
+     */
+    private function buildVariantsQuery($first = 20, $after = null)
+    {
+        $afterClause = $after ? ', after: "' . $after . '"' : '';
+        
+        // Fetch variants directly - consistent count per page!
+        return '{
+            productVariants(first: ' . $first . ', query: "status:active"' . $afterClause . ') {
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+                edges {
+                    cursor
+                    node {
+                        id
+                        title
+                        sku
+                        barcode
+                        inventoryQuantity
+                        product {
+                            id
+                            title
+                            handle
+                            status
+                            metafield(namespace: "custom", key: "pim_sync") {
+                                value
+                            }
+                        }
+                        inventoryItem {
+                            id
+                            inventoryLevels(first: 10) {
+                                edges {
+                                    node {
+                                        id
+                                        quantities(names: ["available"]) {
+                                            name
+                                            quantity
+                                        }
+                                        location {
+                                            id
+                                            name
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }';
+    }
+
+    /**
+     * Get all product variants with their inventory across locations
+     */
+    public function getProductVariants($fetchAll = false, $locationId = null, $after = null)
+    {
+        $allVariants = [];
+        $hasNextPage = true;
+        $pageCount = 0;
+        $maxIterations = $fetchAll ? 1000 : 10; // Only 10 iterations for single page, 1000 for full fetch
+
+        Log::info('Starting variant fetch:', [
+            'location_id' => $locationId,
+            'fetch_all' => $fetchAll,
+            'after_cursor' => $after
+        ]);
+
+        while ($hasNextPage && $pageCount < $maxIterations) {
+            $pageCount++;
+            $graphqlQuery = $this->buildVariantsQuery(20, $after); // 20 active variants per query
+
+            try {
+                $response = $this->client->post($this->graphqlEndpoint, [
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'X-Shopify-Access-Token' => $this->apiKey,
+                    ],
+                    'json' => [
+                        'query' => $graphqlQuery
+                    ]
+                ]);
+
+                $data = json_decode($response->getBody()->getContents(), true);
+
+                if (isset($data['errors'])) {
+                    Log::error('Shopify GraphQL errors:', $data['errors']);
+                    break;
+                }
+
+                $variants = $data['data']['productVariants']['edges'] ?? [];
+                $pageInfo = $data['data']['productVariants']['pageInfo'] ?? [];
+
+                foreach ($variants as $variantEdge) {
+                    $variant = $variantEdge['node'];
+                    $product = $variant['product'];
+                    $inventoryLevels = $variant['inventoryItem']['inventoryLevels']['edges'] ?? [];
+
+                    // Extract numeric ID from GID
+                    $variantNumericId = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $variant['id']);
+                    $productNumericId = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $product['id']);
+
+                    // Get metafield value
+                    $pimSync = $product['metafield']['value'] ?? '';
+                    
+                    // Extract inventory item ID
+                    $inventoryItemId = $variant['inventoryItem']['id'] ?? '';
+
+                    $variantData = [
+                        'variant_id' => $variantNumericId,
+                        'variant_gid' => $variant['id'],
+                        'product_id' => $productNumericId,
+                        'product_gid' => $product['id'],
+                        'product_title' => $product['title'],
+                        'product_handle' => $product['handle'] ?? '',
+                        'product_status' => $product['status'] ?? 'ACTIVE',
+                        'pim_sync' => $pimSync,
+                        'variant_title' => $variant['title'],
+                        'sku' => $variant['sku'] ?? '',
+                        'barcode' => $variant['barcode'] ?? '',
+                        'total_inventory' => $variant['inventoryQuantity'] ?? 0,
+                        'inventory_item_id' => $inventoryItemId,
+                        'inventory_levels' => []
+                    ];
+
+                    // Process inventory levels by location
+                    foreach ($inventoryLevels as $levelEdge) {
+                        $level = $levelEdge['node'];
+                        $locId = $level['location']['id'];
+                        
+                        // Filter by location if specified
+                        if ($locationId && $locId !== $locationId) {
+                            continue;
+                        }
+
+                        // Extract available quantity from quantities array
+                        $availableQty = 0;
+                        if (isset($level['quantities']) && is_array($level['quantities'])) {
+                            foreach ($level['quantities'] as $qty) {
+                                if ($qty['name'] === 'available') {
+                                    $availableQty = $qty['quantity'] ?? 0;
+                                    break;
+                                }
+                            }
+                        }
+
+                        $variantData['inventory_levels'][] = [
+                            'location_id' => $locId,
+                            'location_name' => $level['location']['name'],
+                            'available' => $availableQty
+                        ];
+                    }
+
+                    // Only add if we have inventory levels (or not filtering by location)
+                    if (!$locationId || !empty($variantData['inventory_levels'])) {
+                        $allVariants[] = $variantData;
+                    }
+                }
+
+                $hasNextPage = $pageInfo['hasNextPage'] ?? false;
+                $after = $pageInfo['endCursor'] ?? null;
+
+                Log::info("Variants page {$pageCount} fetched:", [
+                    'variants_in_page' => count($variants),
+                    'total_variants_so_far' => count($allVariants),
+                    'has_next_page' => $hasNextPage
+                ]);
+
+                if (!$fetchAll) {
+                    break;
+                }
+
+            } catch (RequestException $e) {
+                Log::error('Shopify API request failed:', [
+                    'message' => $e->getMessage(),
+                    'page' => $pageCount
+                ]);
+                break;
+            }
+        }
+
+        Log::info('===== VARIANT FETCH COMPLETE =====', [
+            'total_variants' => count($allVariants),
+            'pages_fetched' => $pageCount,
+            'has_next_page' => $hasNextPage,
+            'end_cursor' => $after
+        ]);
+
+        return [
+            'variants' => $allVariants,
+            'pageInfo' => [
+                'hasNextPage' => $hasNextPage,
+                'endCursor' => $after
+            ]
+        ];
+    }
+
+    /**
+     * Update product metafield
+     */
+    public function updateProductMetafield($productGid, $namespace, $key, $value)
+    {
+        $mutation = 'mutation UpdateProductMetafield($input: ProductInput!) {
+            productUpdate(input: $input) {
+                product {
+                    id
+                    metafield(namespace: "' . $namespace . '", key: "' . $key . '") {
+                        value
+                    }
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }';
+
+        $variables = [
+            'input' => [
+                'id' => $productGid,
+                'metafields' => [
+                    [
+                        'namespace' => $namespace,
+                        'key' => $key,
+                        'value' => $value,
+                        'type' => 'single_line_text_field'
+                    ]
+                ]
+            ]
+        ];
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $mutation,
+                    'variables' => $variables
+                ]
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($data['errors']) || !empty($data['data']['productUpdate']['userErrors'])) {
+                Log::error('Shopify metafield update errors:', $data);
+                return false;
+            }
+
+            return true;
+
+        } catch (RequestException $e) {
+            Log::error('Shopify metafield update failed:', [
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Update inventory level for a specific location
+     */
+    public function updateInventoryLevel($inventoryItemId, $locationId, $availableQuantity)
+    {
+        $mutation = 'mutation InventorySetQuantities($input: InventorySetQuantitiesInput!) {
+            inventorySetQuantities(input: $input) {
+                inventoryAdjustmentGroup {
+                    id
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }';
+
+        $variables = [
+            'input' => [
+                'reason' => 'correction',
+                'name' => 'available',
+                'ignoreCompareQuantity' => true,
+                'quantities' => [
+                    [
+                        'inventoryItemId' => $inventoryItemId,
+                        'locationId' => $locationId,
+                        'quantity' => $availableQuantity
+                    ]
+                ]
+            ]
+        ];
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $mutation,
+                    'variables' => $variables
+                ]
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($data['errors']) || !empty($data['data']['inventorySetQuantities']['userErrors'])) {
+                Log::error('Shopify inventory update errors:', $data);
+                return false;
+            }
+
+            return true;
+
+        } catch (RequestException $e) {
+            Log::error('Shopify inventory update failed:', [
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+            ]);
+            return false;
+        }
+    }
 }
+

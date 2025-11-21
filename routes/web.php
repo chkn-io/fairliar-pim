@@ -36,6 +36,22 @@ Route::middleware('auth')->group(function () {
     Route::get('/inventory', [InventoryController::class, 'index'])->name('inventory.index');
     Route::get('/inventory/export', [InventoryController::class, 'export'])->name('inventory.export');
 
+    // Stock Sync routes
+    Route::get('/stock-sync', [App\Http\Controllers\StockSyncController::class, 'index'])->name('stock-sync.index');
+    Route::get('/stock-sync/export', [App\Http\Controllers\StockSyncController::class, 'export'])->name('stock-sync.export');
+    Route::get('/stock-sync/clear-cache', [App\Http\Controllers\StockSyncController::class, 'clearCache'])->name('stock-sync.clear-cache');
+    Route::post('/stock-sync/toggle-pim-sync', [App\Http\Controllers\StockSyncController::class, 'togglePimSync'])->name('stock-sync.toggle-pim-sync');
+    Route::post('/stock-sync/sync-stock', [App\Http\Controllers\StockSyncController::class, 'syncStock'])->name('stock-sync.sync-stock');
+    
+    // Warehouse sync endpoint (admin only)
+    Route::middleware('admin')->post('/warehouse/sync', [App\Http\Controllers\StockSyncController::class, 'syncWarehouse'])->name('warehouse.sync');
+
+    // Settings routes (admin only)
+    Route::middleware('admin')->group(function () {
+        Route::get('/settings/warehouse', [App\Http\Controllers\SettingsController::class, 'warehouse'])->name('settings.warehouse');
+        Route::put('/settings/warehouse', [App\Http\Controllers\SettingsController::class, 'updateWarehouse'])->name('settings.warehouse.update');
+    });
+
     // Admin only routes for user management
     Route::middleware('admin')->group(function () {
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
