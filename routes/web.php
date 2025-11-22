@@ -40,6 +40,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/stock-sync', [App\Http\Controllers\StockSyncController::class, 'index'])->name('stock-sync.index');
     Route::get('/stock-sync/export', [App\Http\Controllers\StockSyncController::class, 'export'])->name('stock-sync.export');
     Route::get('/stock-sync/clear-cache', [App\Http\Controllers\StockSyncController::class, 'clearCache'])->name('stock-sync.clear-cache');
+    Route::post('/stock-sync/get-warehouse-stock', [App\Http\Controllers\StockSyncController::class, 'getWarehouseStock'])->name('stock-sync.get-warehouse-stock');
     Route::post('/stock-sync/toggle-pim-sync', [App\Http\Controllers\StockSyncController::class, 'togglePimSync'])->name('stock-sync.toggle-pim-sync');
     Route::post('/stock-sync/sync-stock', [App\Http\Controllers\StockSyncController::class, 'syncStock'])->name('stock-sync.sync-stock');
     

@@ -28,6 +28,7 @@ class StockSyncController extends Controller
     public function index(Request $request)
     {
         $search = $request->input('search');
+        $sort = $request->input('sort', 'product_asc');
         
         // Get default location from settings if not specified
         $defaultLocationId = Setting::get('default_location_id');
@@ -45,75 +46,26 @@ class StockSyncController extends Controller
         $lastPage = 1;
         
         // If searching, fetch all variants to search through them
-        if ($search) {
-            Log::info('Searching all variants...', ['search' => $search, 'location_id' => $locationId]);
-            $result = $this->shopifyService->getProductVariants(true, $locationId);
-            $shopifyVariants = $result['variants'];
+        // Map sort parameter to Shopify GraphQL sortKey
+        list($sortKey, $reverse) = $this->mapSortToGraphQL($sort);
+        
+        // Get sync status filter
+        $syncStatusFilter = $request->input('sync_status', '');
+        
+        // Use cursor-based pagination with GraphQL sorting
+        Log::info('Fetching variants page...', ['page' => $page, 'location_id' => $locationId, 'search' => $search, 'sync_status' => $syncStatusFilter]);
             
-            // Build comparison data with warehouse stock
-            foreach ($shopifyVariants as $variant) {
-                $variantId = $variant['variant_id'];
-                $shopifyStock = 0;
-                
-                if ($locationId) {
-                    foreach ($variant['inventory_levels'] as $level) {
-                        if ($level['location_id'] === $locationId) {
-                            $shopifyStock = $level['available'];
-                            break;
-                        }
-                    }
-                } else {
-                    $shopifyStock = $variant['total_inventory'];
-                }
-
-                // Get warehouse stock
-                $warehouseVariant = WarehouseVariant::where('shopify_variant_id', $variantId)->first();
-                $warehouseStock = $warehouseVariant ? $warehouseVariant->stock : null;
-
-                $comparisonData[] = [
-                    'variant_id' => $variantId,
-                    'variant_gid' => $variant['variant_gid'],
-                    'product_id' => $variant['product_id'],
-                    'product_gid' => $variant['product_gid'],
-                    'product_title' => $variant['product_title'],
-                    'product_handle' => $variant['product_handle'] ?? '',
-                    'variant_title' => $variant['variant_title'],
-                    'sku' => $variant['sku'],
-                    'barcode' => $variant['barcode'],
-                    'shopify_stock' => $shopifyStock,
-                    'warehouse_stock' => $warehouseStock,
-                    'pim_sync' => $variant['pim_sync'] ?? '',
-                    'inventory_item_id' => $variant['inventory_item_id'] ?? '',
-                    'inventory_levels' => $variant['inventory_levels'],
-                ];
+            // Build search query for GraphQL if search term provided
+            $searchQuery = '';
+            if (!empty($search)) {
+                $searchTerm = trim($search);
+                // Shopify search query format
+                $searchQuery = ' AND (' .
+                    'title:*' . $searchTerm . '* OR ' .
+                    'sku:*' . $searchTerm . '* OR ' .
+                    'barcode:*' . $searchTerm . '* OR ' .
+                    'product_id:' . $searchTerm . ')'; 
             }
-            
-            // Filter by search
-            $searchLower = strtolower($search);
-            $syncData = array_filter($comparisonData, function($item) use ($searchLower) {
-                return stripos($item['product_title'], $searchLower) !== false ||
-                       stripos($item['variant_title'], $searchLower) !== false ||
-                       stripos($item['sku'], $searchLower) !== false ||
-                       stripos($item['barcode'], $searchLower) !== false ||
-                       stripos($item['variant_id'], $searchLower) !== false;
-            });
-            $syncData = array_values($syncData);
-            
-            $totalVariants = count($syncData);
-            $lastPage = ceil($totalVariants / $perPage);
-            
-            // Sort by product title
-            usort($syncData, function($a, $b) {
-                return strcmp($a['product_title'], $b['product_title']);
-            });
-            
-            // Paginate the search results
-            $offset = ($page - 1) * $perPage;
-            $syncData = array_slice($syncData, $offset, $perPage);
-            
-        } else {
-            // No search - use cursor-based pagination but track pages in session
-            Log::info('Fetching variants page...', ['page' => $page, 'location_id' => $locationId]);
             
             // Store cursors in session for pagination
             $sessionKey = 'stock_sync_cursors_' . ($locationId ?? 'all');
@@ -130,7 +82,7 @@ class StockSyncController extends Controller
                         $tempCursor = $cursors[$i + 1];
                     } else {
                         // Fetch page to get next cursor
-                        $tempResult = $this->shopifyService->getProductVariants(false, $locationId, $tempCursor);
+                        $tempResult = $this->shopifyService->getProductVariants(false, $locationId, $tempCursor, $sortKey, $reverse, $searchQuery);
                         $tempCursor = $tempResult['pageInfo']['endCursor'];
                         $cursors[$i + 1] = $tempCursor;
                     }
@@ -139,66 +91,67 @@ class StockSyncController extends Controller
                 session([$sessionKey => $cursors]);
             }
             
-            $result = $this->shopifyService->getProductVariants(false, $locationId, $cursor);
+            $result = $this->shopifyService->getProductVariants(false, $locationId, $cursor, $sortKey, $reverse, $searchQuery);
             $shopifyVariants = $result['variants'];
             $hasNextPage = $result['pageInfo']['hasNextPage'];
             $nextCursor = $result['pageInfo']['endCursor'];
             
             // Store next page cursor
             if ($hasNextPage && $nextCursor) {
-                $cursors[$page + 1] = $nextCursor;
-                session([$sessionKey => $cursors]);
-            }
-            
-            // Build comparison data with warehouse stock
-            foreach ($shopifyVariants as $variant) {
-                $variantId = $variant['variant_id'];
-                $shopifyStock = 0;
-                
-                if ($locationId) {
-                    foreach ($variant['inventory_levels'] as $level) {
-                        if ($level['location_id'] === $locationId) {
-                            $shopifyStock = $level['available'];
-                            break;
-                        }
-                    }
-                } else {
-                    $shopifyStock = $variant['total_inventory'];
-                }
-
-                // Get warehouse stock
-                $warehouseVariant = WarehouseVariant::where('shopify_variant_id', $variantId)->first();
-                $warehouseStock = $warehouseVariant ? $warehouseVariant->stock : null;
-
-                $comparisonData[] = [
-                    'variant_id' => $variantId,
-                    'variant_gid' => $variant['variant_gid'],
-                    'product_id' => $variant['product_id'],
-                    'product_gid' => $variant['product_gid'],
-                    'product_title' => $variant['product_title'],
-                    'product_handle' => $variant['product_handle'] ?? '',
-                    'variant_title' => $variant['variant_title'],
-                    'sku' => $variant['sku'],
-                    'barcode' => $variant['barcode'],
-                    'shopify_stock' => $shopifyStock,
-                    'warehouse_stock' => $warehouseStock,
-                    'pim_sync' => $variant['pim_sync'] ?? '',
-                    'inventory_item_id' => $variant['inventory_item_id'] ?? '',
-                    'inventory_levels' => $variant['inventory_levels'],
-                ];
-            }
-            
-            $syncData = $comparisonData;
-            $totalVariants = count($syncData);
-            
-            // Sort by product title
-            usort($syncData, function($a, $b) {
-                return strcmp($a['product_title'], $b['product_title']);
-            });
-            
-            // Estimate last page (we don't know exact total, but can show "Next" if hasNextPage)
-            $lastPage = $hasNextPage ? $page + 1 : $page;
+            $cursors[$page + 1] = $nextCursor;
+            session([$sessionKey => $cursors]);
         }
+        
+        // Build comparison data WITHOUT warehouse stock (will be loaded via AJAX)
+        foreach ($shopifyVariants as $variant) {
+            $variantId = $variant['variant_id'];
+            $shopifyStock = 0;
+            
+            if ($locationId) {
+                foreach ($variant['inventory_levels'] as $level) {
+                    if ($level['location_id'] === $locationId) {
+                        $shopifyStock = $level['available'];
+                        break;
+                    }
+                }
+            } else {
+                $shopifyStock = $variant['total_inventory'];
+            }
+
+            $pimSync = $variant['pim_sync'] ?? '';
+            
+            // Apply sync status filter
+            if ($syncStatusFilter) {
+                if ($syncStatusFilter === 'included' && $pimSync !== 'true') continue;
+                if ($syncStatusFilter === 'excluded' && $pimSync !== 'false') continue;
+                if ($syncStatusFilter === 'unset' && !empty($pimSync)) continue;
+            }
+
+            $comparisonData[] = [
+                'variant_id' => $variantId,
+                'variant_gid' => $variant['variant_gid'],
+                'product_id' => $variant['product_id'],
+                'product_gid' => $variant['product_gid'],
+                'product_title' => $variant['product_title'],
+                'product_handle' => $variant['product_handle'] ?? '',
+                'variant_title' => $variant['variant_title'],
+                'sku' => $variant['sku'],
+                'barcode' => $variant['barcode'],
+                'shopify_stock' => $shopifyStock,
+                'warehouse_stock' => null, // Will be loaded via AJAX
+                'pim_sync' => $pimSync,
+                'inventory_item_id' => $variant['inventory_item_id'] ?? '',
+                'inventory_levels' => $variant['inventory_levels'],
+            ];
+        }
+        
+        $syncData = $comparisonData;
+        $totalVariants = count($syncData);
+        
+        // Note: Sorting is handled by GraphQL sortKey, no need to sort here
+        
+        // Estimate last page (we don't know exact total, but can show "Next" if hasNextPage)
+        $lastPage = $hasNextPage ? $page + 1 : $page;
 
         // Check if warehouse data is synced
         $warehouseVariantsCount = WarehouseVariant::count();
@@ -214,6 +167,8 @@ class StockSyncController extends Controller
             'locations' => $locations,
             'selectedLocation' => $locationId,
             'search' => $search,
+            'sort' => $sort,
+            'syncStatusFilter' => $syncStatusFilter,
             'currentPage' => $currentPage,
             'lastPage' => $lastPage,
             'perPage' => $perPage,
@@ -222,6 +177,100 @@ class StockSyncController extends Controller
             'cacheExists' => false,
             'warehouseVariantsCount' => $warehouseVariantsCount,
             'lastSyncTime' => $lastSyncTime
+        ]);
+    }
+
+    /**
+     * Map sort parameter to Shopify GraphQL sortKey and reverse flag
+     */
+    private function mapSortToGraphQL($sort)
+    {
+        // Shopify productVariants valid sortKey options: ID, TITLE, SKU, INVENTORY_MANAGEMENT, FULL_TITLE
+        switch($sort) {
+            case 'product_desc':
+                return ['TITLE', true];
+            
+            case 'sku_asc':
+                return ['SKU', false];
+            
+            case 'sku_desc':
+                return ['SKU', true];
+            
+            case 'product_asc':
+            default:
+                return ['TITLE', false];
+        }
+    }
+
+    /**
+     * Apply sorting to sync data
+     */
+    private function applySorting($data, $sort)
+    {
+        usort($data, function($a, $b) use ($sort) {
+            switch($sort) {
+                case 'product_desc':
+                    return strcmp($b['product_title'], $a['product_title']);
+                
+                case 'shopify_stock_asc':
+                    return $a['shopify_stock'] <=> $b['shopify_stock'];
+                
+                case 'shopify_stock_desc':
+                    return $b['shopify_stock'] <=> $a['shopify_stock'];
+                
+                case 'warehouse_stock_asc':
+                    $aStock = $a['warehouse_stock'] ?? -1;
+                    $bStock = $b['warehouse_stock'] ?? -1;
+                    return $aStock <=> $bStock;
+                
+                case 'warehouse_stock_desc':
+                    $aStock = $a['warehouse_stock'] ?? -1;
+                    $bStock = $b['warehouse_stock'] ?? -1;
+                    return $bStock <=> $aStock;
+                
+                case 'difference_asc':
+                    $aDiff = $a['warehouse_stock'] !== null ? ($a['shopify_stock'] - $a['warehouse_stock']) : 999999;
+                    $bDiff = $b['warehouse_stock'] !== null ? ($b['shopify_stock'] - $b['warehouse_stock']) : 999999;
+                    return $aDiff <=> $bDiff;
+                
+                case 'difference_desc':
+                    $aDiff = $a['warehouse_stock'] !== null ? ($a['shopify_stock'] - $a['warehouse_stock']) : -999999;
+                    $bDiff = $b['warehouse_stock'] !== null ? ($b['shopify_stock'] - $b['warehouse_stock']) : -999999;
+                    return $bDiff <=> $aDiff;
+                
+                case 'sku_asc':
+                    return strcmp($a['sku'] ?? '', $b['sku'] ?? '');
+                
+                case 'sku_desc':
+                    return strcmp($b['sku'] ?? '', $a['sku'] ?? '');
+                
+                case 'product_asc':
+                default:
+                    return strcmp($a['product_title'], $b['product_title']);
+            }
+        });
+        
+        return $data;
+    }
+
+    /**
+     * Get warehouse stock for specific variants (AJAX endpoint)
+     */
+    public function getWarehouseStock(Request $request)
+    {
+        $variantIds = $request->input('variant_ids', []);
+        
+        if (empty($variantIds)) {
+            return response()->json(['success' => false, 'message' => 'No variant IDs provided']);
+        }
+        
+        $warehouseStocks = WarehouseVariant::whereIn('shopify_variant_id', $variantIds)
+            ->pluck('stock', 'shopify_variant_id')
+            ->toArray();
+        
+        return response()->json([
+            'success' => true,
+            'stocks' => $warehouseStocks
         ]);
     }
 
@@ -353,8 +402,9 @@ class StockSyncController extends Controller
             // Set metafield value: 'false' to exclude, 'true' to include
             $metafieldValue = $exclude ? 'false' : 'true';
             
-            $success = $this->shopifyService->updateProductMetafield(
-                $productGid,
+            // Update VARIANT metafield (not product) so each variant can have independent status
+            $success = $this->shopifyService->updateVariantMetafield(
+                $variantGid,
                 'custom',
                 'pim_sync',
                 $metafieldValue

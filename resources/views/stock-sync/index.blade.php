@@ -55,7 +55,7 @@
                                placeholder="Product name, SKU, barcode, variant ID...">
                     </div>
                     
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="location_id" class="form-label">Location</label>
                         <select class="form-select" id="location_id" name="location_id">
                             <option value="">All Locations (Total Stock)</option>
@@ -67,12 +67,32 @@
                         </select>
                     </div>
                     
-                    <div class="col-md-4 d-flex align-items-end gap-2">
+                    <div class="col-md-2">
+                        <label for="sort" class="form-label">Sort By</label>
+                        <select class="form-select" id="sort" name="sort">
+                            <option value="product_asc" {{ request('sort') == 'product_asc' ? 'selected' : '' }}>Product Name (A-Z)</option>
+                            <option value="product_desc" {{ request('sort') == 'product_desc' ? 'selected' : '' }}>Product Name (Z-A)</option>
+                            <option value="sku_asc" {{ request('sort') == 'sku_asc' ? 'selected' : '' }}>SKU (A-Z)</option>
+                            <option value="sku_desc" {{ request('sort') == 'sku_desc' ? 'selected' : '' }}>SKU (Z-A)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="sync_status" class="form-label">Sync Status</label>
+                        <select class="form-select" id="sync_status" name="sync_status">
+                            <option value="" {{ request('sync_status') == '' ? 'selected' : '' }}>All Statuses</option>
+                            <option value="included" {{ request('sync_status') == 'included' ? 'selected' : '' }}>Included Only</option>
+                            <option value="excluded" {{ request('sync_status') == 'excluded' ? 'selected' : '' }}>Excluded Only</option>
+                            <option value="unset" {{ request('sync_status') == 'unset' ? 'selected' : '' }}>Unset Only</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-1 d-flex align-items-end gap-2">
                         <button type="submit" class="btn btn-primary">
-                            🔍 Search / Filter
+                            🔍
                         </button>
                         <a href="{{ route('stock-sync.index') }}" class="btn btn-outline-secondary">
-                            🔄 Clear
+                            🔄
                         </a>
                     </div>
                 </div>
@@ -121,9 +141,10 @@
                                 }
                             }
                             
-                            // Check pim_sync status
+                            // Check pim_sync status: 'true' = included, 'false' = excluded, empty/blank = unset
                             $pimSync = $item['pim_sync'] ?? '';
-                            $isSyncEnabled = ($pimSync === 'true' || empty($pimSync)) && $pimSync !== 'false';
+                            $isSyncEnabled = $pimSync === 'true';
+                            $isExplicitlyExcluded = $pimSync === 'false';
                             
                             // Get store domain for Shopify link
                             $storeDomain = config('shopify.store_domain');
@@ -139,28 +160,24 @@
                             <td class="text-center">
                                 @if($isSyncEnabled)
                                     <span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>
-                                @else
+                                @elseif($isExplicitlyExcluded)
                                     <span class="badge bg-warning text-dark" title="This variant is excluded from PIM sync">✗ Excluded</span>
+                                @else
+                                    <span class="badge bg-secondary" title="Sync status not set for this variant">○ Unset</span>
                                 @endif
                             </td>
                             <td class="text-center">
                                 <span class="badge bg-primary">{{ $item['shopify_stock'] }}</span>
                             </td>
                             <td class="text-center">
-                                @if($item['warehouse_stock'] !== null)
-                                    <span class="badge bg-info">{{ $item['warehouse_stock'] }}</span>
-                                @else
-                                    <span class="badge bg-secondary">N/A</span>
-                                @endif
+                                <span class="warehouse-stock" data-variant-id="{{ $item['variant_id'] }}">
+                                    <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                                </span>
                             </td>
                             <td class="text-center">
-                                @if($diff !== null)
-                                    <span class="fw-bold {{ $diffClass }}">
-                                        @if($diff > 0)+@endif{{ $diff }}
-                                    </span>
-                                @else
+                                <span class="stock-difference" data-variant-id="{{ $item['variant_id'] }}" data-shopify-stock="{{ $item['shopify_stock'] }}">
                                     <span class="text-muted">-</span>
-                                @endif
+                                </span>
                             </td>
                             <td class="text-center">
                                 <div class="d-flex gap-1 justify-content-center flex-wrap">
@@ -173,30 +190,51 @@
                                         <i class="bi bi-box-arrow-up-right"></i> View
                                     </a>
                                     
-                                    <!-- Toggle PIM Sync -->
+                                    <!-- Toggle PIM Sync Buttons -->
                                     @if($isSyncEnabled)
+                                        <!-- Only show Exclude button when included -->
                                         <button onclick="togglePimSync('{{ $item['variant_gid'] }}', '{{ $item['product_gid'] }}', '{{ addslashes($item['product_title']) }}', true)" 
                                                 class="btn btn-sm btn-warning"
                                                 title="Exclude this variant from PIM sync"
                                                 style="min-width: 80px;">
                                             <i class="bi bi-x-circle"></i> Exclude
                                         </button>
-                                    @else
+                                    @elseif($isExplicitlyExcluded)
+                                        <!-- Only show Include button when excluded -->
                                         <button onclick="togglePimSync('{{ $item['variant_gid'] }}', '{{ $item['product_gid'] }}', '{{ addslashes($item['product_title']) }}', false)" 
                                                 class="btn btn-sm btn-success"
                                                 title="Include this variant in PIM sync"
                                                 style="min-width: 80px;">
                                             <i class="bi bi-check-circle"></i> Include
                                         </button>
+                                    @else
+                                        <!-- Show both Include and Exclude buttons when unset -->
+                                        <button onclick="togglePimSync('{{ $item['variant_gid'] }}', '{{ $item['product_gid'] }}', '{{ addslashes($item['product_title']) }}', false)" 
+                                                class="btn btn-sm btn-success"
+                                                title="Include this variant in PIM sync"
+                                                style="min-width: 80px;">
+                                            <i class="bi bi-check-circle"></i> Include
+                                        </button>
+                                        <button onclick="togglePimSync('{{ $item['variant_gid'] }}', '{{ $item['product_gid'] }}', '{{ addslashes($item['product_title']) }}', true)" 
+                                                class="btn btn-sm btn-outline-warning"
+                                                title="Exclude this variant from PIM sync"
+                                                style="min-width: 80px;">
+                                            <i class="bi bi-x-circle"></i> Exclude
+                                        </button>
                                     @endif
                                     
                                     <!-- Sync Stock (only show if variant is included in sync) -->
-                                    @if($isSyncEnabled && $item['warehouse_stock'] !== null && $selectedLocation)
-                                        <button onclick="syncStock('{{ $item['variant_id'] }}', '{{ $item['inventory_item_id'] }}', '{{ $selectedLocation }}', {{ $item['warehouse_stock'] }}, '{{ addslashes($item['product_title']) }}', '{{ addslashes($item['variant_title']) }}')" 
-                                                class="btn btn-sm btn-info"
+                                    @if($isSyncEnabled && $selectedLocation)
+                                        <button class="btn btn-sm btn-info sync-stock-btn" 
+                                                data-variant-id="{{ $item['variant_id'] }}"
+                                                data-inventory-item-id="{{ $item['inventory_item_id'] }}"
+                                                data-location-id="{{ $selectedLocation }}"
+                                                data-product-title="{{ addslashes($item['product_title']) }}"
+                                                data-variant-title="{{ addslashes($item['variant_title']) }}"
+                                                data-shopify-stock="{{ $item['shopify_stock'] }}"
                                                 title="Sync stock from warehouse to Shopify"
                                                 style="min-width: 80px;"
-                                                {{ $item['shopify_stock'] == $item['warehouse_stock'] ? 'disabled' : '' }}>
+                                                disabled>
                                             <i class="bi bi-arrow-repeat"></i> Sync
                                         </button>
                                     @endif
@@ -496,7 +534,94 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    
+    // Fetch warehouse stocks after page load
+    fetchWarehouseStocks();
 });
+
+function fetchWarehouseStocks() {
+    // Get all variant IDs from the table
+    const variantElements = document.querySelectorAll('.warehouse-stock[data-variant-id]');
+    const variantIds = Array.from(variantElements).map(el => el.dataset.variantId);
+    
+    if (variantIds.length === 0) return;
+    
+    // Fetch warehouse stocks via AJAX
+    fetch('{{ route('stock-sync.get-warehouse-stock') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ variant_ids: variantIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update warehouse stock for each variant
+            variantElements.forEach(el => {
+                const variantId = el.dataset.variantId;
+                const warehouseStock = data.stocks[variantId];
+                
+                if (warehouseStock !== undefined && warehouseStock !== null) {
+                    el.innerHTML = `<span class="badge bg-info">${warehouseStock}</span>`;
+                } else {
+                    el.innerHTML = '<span class="badge bg-secondary">N/A</span>';
+                }
+            });
+            
+            // Update difference column
+            document.querySelectorAll('.stock-difference[data-variant-id]').forEach(el => {
+                const variantId = el.dataset.variantId;
+                const shopifyStock = parseInt(el.dataset.shopifyStock);
+                const warehouseStock = data.stocks[variantId];
+                
+                if (warehouseStock !== undefined && warehouseStock !== null) {
+                    const diff = shopifyStock - warehouseStock;
+                    let diffClass = 'text-muted';
+                    if (diff > 0) diffClass = 'text-success';
+                    else if (diff < 0) diffClass = 'text-danger';
+                    
+                    el.innerHTML = `<span class="fw-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</span>`;
+                } else {
+                    el.innerHTML = '<span class="text-muted">-</span>';
+                }
+            });
+            
+            // Enable sync buttons with warehouse stock data
+            document.querySelectorAll('.sync-stock-btn[data-variant-id]').forEach(btn => {
+                const variantId = btn.dataset.variantId;
+                const warehouseStock = data.stocks[variantId];
+                const shopifyStock = parseInt(btn.dataset.shopifyStock);
+                
+                if (warehouseStock !== undefined && warehouseStock !== null) {
+                    btn.dataset.warehouseStock = warehouseStock;
+                    // Enable button only if stocks don't match
+                    if (shopifyStock !== warehouseStock) {
+                        btn.disabled = false;
+                        btn.onclick = function() {
+                            syncStock(
+                                btn.dataset.variantId,
+                                btn.dataset.inventoryItemId,
+                                btn.dataset.locationId,
+                                warehouseStock,
+                                btn.dataset.productTitle,
+                                btn.dataset.variantTitle
+                            );
+                        };
+                    }
+                }
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Failed to fetch warehouse stocks:', error);
+        // Show N/A on error
+        variantElements.forEach(el => {
+            el.innerHTML = '<span class="badge bg-secondary">N/A</span>';
+        });
+    });
+}
 </script>
 
 <style>

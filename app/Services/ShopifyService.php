@@ -739,13 +739,15 @@ class ShopifyService
      * Build GraphQL query for product variants with inventory
      * Using productVariants query directly for consistent pagination
      */
-    private function buildVariantsQuery($first = 20, $after = null)
+    private function buildVariantsQuery($first = 20, $after = null, $sortKey = 'TITLE', $reverse = false, $searchQuery = '')
     {
         $afterClause = $after ? ', after: "' . $after . '"' : '';
+        $reverseClause = $reverse ? ', reverse: true' : '';
+        $queryString = 'status:active' . $searchQuery;
         
         // Fetch variants directly - consistent count per page!
         return '{
-            productVariants(first: ' . $first . ', query: "status:active"' . $afterClause . ') {
+            productVariants(first: ' . $first . ', query: "' . $queryString . '", sortKey: ' . $sortKey . $reverseClause . $afterClause . ') {
                 pageInfo {
                     hasNextPage
                     endCursor
@@ -758,14 +760,14 @@ class ShopifyService
                         sku
                         barcode
                         inventoryQuantity
+                        metafield(namespace: "custom", key: "pim_sync") {
+                            value
+                        }
                         product {
                             id
                             title
                             handle
                             status
-                            metafield(namespace: "custom", key: "pim_sync") {
-                                value
-                            }
                         }
                         inventoryItem {
                             id
@@ -794,7 +796,7 @@ class ShopifyService
     /**
      * Get all product variants with their inventory across locations
      */
-    public function getProductVariants($fetchAll = false, $locationId = null, $after = null)
+    public function getProductVariants($fetchAll = false, $locationId = null, $after = null, $sortKey = 'TITLE', $reverse = false, $searchQuery = '')
     {
         $allVariants = [];
         $hasNextPage = true;
@@ -804,12 +806,15 @@ class ShopifyService
         Log::info('Starting variant fetch:', [
             'location_id' => $locationId,
             'fetch_all' => $fetchAll,
-            'after_cursor' => $after
+            'after_cursor' => $after,
+            'sort_key' => $sortKey,
+            'reverse' => $reverse,
+            'search_query' => $searchQuery
         ]);
 
         while ($hasNextPage && $pageCount < $maxIterations) {
             $pageCount++;
-            $graphqlQuery = $this->buildVariantsQuery(20, $after); // 20 active variants per query
+            $graphqlQuery = $this->buildVariantsQuery(20, $after, $sortKey, $reverse, $searchQuery); // 20 active variants per query
 
             try {
                 $response = $this->client->post($this->graphqlEndpoint, [
@@ -841,8 +846,8 @@ class ShopifyService
                     $variantNumericId = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $variant['id']);
                     $productNumericId = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $product['id']);
 
-                    // Get metafield value
-                    $pimSync = $product['metafield']['value'] ?? '';
+                    // Get metafield value from variant (not product)
+                    $pimSync = $variant['metafield']['value'] ?? '';
                     
                     // Extract inventory item ID
                     $inventoryItemId = $variant['inventoryItem']['id'] ?? '';
@@ -993,6 +998,71 @@ class ShopifyService
 
         } catch (RequestException $e) {
             Log::error('Shopify metafield update failed:', [
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Update variant metafield using metafieldsSet mutation
+     */
+    public function updateVariantMetafield($variantGid, $namespace, $key, $value)
+    {
+        // Use metafieldsSet mutation which is the modern way to set metafields
+        $mutation = 'mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+                metafields {
+                    id
+                    namespace
+                    key
+                    value
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }';
+
+        $variables = [
+            'metafields' => [
+                [
+                    'ownerId' => $variantGid,
+                    'namespace' => $namespace,
+                    'key' => $key,
+                    'value' => $value,
+                    'type' => 'single_line_text_field'
+                ]
+            ]
+        ];
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $mutation,
+                    'variables' => $variables
+                ]
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            
+            Log::info('Variant metafield update response:', $data);
+
+            if (isset($data['errors']) || !empty($data['data']['metafieldsSet']['userErrors'])) {
+                Log::error('Shopify variant metafield update errors:', $data);
+                return false;
+            }
+
+            return true;
+
+        } catch (RequestException $e) {
+            Log::error('Shopify variant metafield update failed:', [
                 'message' => $e->getMessage(),
                 'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
             ]);
