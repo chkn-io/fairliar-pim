@@ -65,6 +65,7 @@ class SyncWarehouseVariants extends Command
         $skipped = 0;
         $failed = 0;
         $page = 1;
+        $syncedWarehouseIds = [];
         
         // Fetch and save page by page
         do {
@@ -119,6 +120,8 @@ class SyncWarehouseVariants extends Command
                         ]
                     );
                     
+                    // Track this warehouse ID as synced
+                    $syncedWarehouseIds[] = $variant['id'];
                     $synced++;
                 } catch (\Exception $e) {
                     $failed++;
@@ -141,9 +144,20 @@ class SyncWarehouseVariants extends Command
         $bar->finish();
         $this->newLine(2);
         
+        // Remove variants that no longer exist in the warehouse
+        $this->info('Cleaning up stale records...');
+        $deleted = 0;
+        
+        if (!empty($syncedWarehouseIds)) {
+            $deleted = WarehouseVariant::whereNotIn('warehouse_id', $syncedWarehouseIds)->delete();
+        }
+        
         $this->info("✅ Sync complete!");
         $this->info("📊 Synced: {$synced}");
         $this->info("⏭️  Skipped: {$skipped} (no Shopify variant ID)");
+        if ($deleted > 0) {
+            $this->info("🗑️  Deleted: {$deleted} (no longer in warehouse)");
+        }
         if ($failed > 0) {
             $this->warn("❌ Failed: {$failed}");
         }

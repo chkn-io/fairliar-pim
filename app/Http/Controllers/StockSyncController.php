@@ -45,7 +45,6 @@ class StockSyncController extends Controller
         $currentPage = $page;
         $lastPage = 1;
         
-        // If searching, fetch all variants to search through them
         // Map sort parameter to Shopify GraphQL sortKey
         list($sortKey, $reverse) = $this->mapSortToGraphQL($sort);
         

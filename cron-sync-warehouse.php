@@ -22,9 +22,7 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 
 // Run the warehouse:sync command
-$status = $kernel->call('warehouse:sync', [
-    '--fresh' => true
-]);
+$status = $kernel->call('warehouse:sync');
 
 // Get the output
 $output = $kernel->output();
