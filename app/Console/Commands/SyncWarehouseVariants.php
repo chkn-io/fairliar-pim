@@ -107,7 +107,7 @@ class SyncWarehouseVariants extends Command
                     }
                     
                     // Update or create the variant
-                    WarehouseVariant::updateOrCreate(
+                    $warehouseVariant = WarehouseVariant::updateOrCreate(
                         ['warehouse_id' => $variant['id']],
                         [
                             'shopify_variant_id' => $shopifyVariantId,
@@ -120,9 +120,12 @@ class SyncWarehouseVariants extends Command
                         ]
                     );
                     
-                    // Track this warehouse ID as synced
-                    $syncedWarehouseIds[] = $variant['id'];
-                    $synced++;
+                    // Only count if successfully saved
+                    if ($warehouseVariant && $warehouseVariant->exists) {
+                        // Track this warehouse ID as synced
+                        $syncedWarehouseIds[] = $variant['id'];
+                        $synced++;
+                    }
                 } catch (\Exception $e) {
                     $failed++;
                     $this->error("\nFailed to sync variant ID {$variant['id']}: " . $e->getMessage());
