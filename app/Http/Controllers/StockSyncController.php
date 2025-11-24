@@ -64,7 +64,8 @@ class StockSyncController extends Controller
                     'product_title:*' . $searchTerm . '* OR ' .
                     'title:*' . $searchTerm . '* OR ' .
                     'sku:*' . $searchTerm . '* OR ' .
-                    'barcode:*' . $searchTerm . '*)'; 
+                    'barcode:*' . $searchTerm . '* OR ' .
+                    'id:' . $searchTerm . ')'; 
             }
             
             // Store cursors in session for pagination
