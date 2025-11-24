@@ -59,13 +59,19 @@ class StockSyncController extends Controller
             if (!empty($search)) {
                 $searchTerm = trim($search);
                 // Shopify search query format for productVariants
-                // Use product_title for product name, title for variant name
-                $searchQuery = ' AND (' .
-                    'product_title:*' . $searchTerm . '* OR ' .
-                    'title:*' . $searchTerm . '* OR ' .
-                    'sku:*' . $searchTerm . '* OR ' .
-                    'barcode:*' . $searchTerm . '* OR ' .
-                    'id:' . $searchTerm . ')'; 
+                // Wildcards are needed for partial matching
+                
+                // Check if it's purely numeric (variant ID search)
+                if (is_numeric($searchTerm)) {
+                    $searchQuery = ' AND (id:' . $searchTerm . ')';
+                } else {
+                    // Text search with wildcards for partial matching
+                    $searchQuery = ' AND (' .
+                        'product_title:*' . $searchTerm . '* OR ' .
+                        'title:*' . $searchTerm . '* OR ' .
+                        'sku:*' . $searchTerm . '* OR ' .
+                        'barcode:*' . $searchTerm . '*)';
+                }
             }
             
             // Store cursors in session for pagination
