@@ -14,7 +14,7 @@ class SyncWarehouseVariants extends Command
      *
      * @var string
      */
-    protected $signature = 'warehouse:sync {--fresh : Truncate table before syncing}';
+    protected $signature = 'warehouse:sync {--fresh : Truncate table before syncing} {--log-skipped : Log skipped variants to file}';
 
     /**
      * The console command description.
@@ -36,6 +36,22 @@ class SyncWarehouseVariants extends Command
         if ($this->option('fresh')) {
             $this->warn('Truncating warehouse_variants table...');
             DB::table('warehouse_variants')->truncate();
+        }
+        
+        // Initialize log file for skipped variants if --log-skipped option is used
+        $logSkipped = $this->option('log-skipped');
+        $skippedLogFile = storage_path('logs/warehouse-sync-skipped-' . date('Y-m-d_His') . '.log');
+        $duplicatesLogFile = storage_path('logs/warehouse-sync-duplicates-' . date('Y-m-d_His') . '.log');
+        
+        if ($logSkipped) {
+            file_put_contents($skippedLogFile, "Warehouse Sync - Skipped Variants Log\n");
+            file_put_contents($skippedLogFile, "Generated: " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+            file_put_contents($skippedLogFile, str_repeat('=', 80) . "\n\n", FILE_APPEND);
+            
+            file_put_contents($duplicatesLogFile, "Warehouse Sync - Duplicate Shopify Variant IDs Log\n");
+            file_put_contents($duplicatesLogFile, "Generated: " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+            file_put_contents($duplicatesLogFile, "Multiple warehouse records pointing to the same Shopify variant\n", FILE_APPEND);
+            file_put_contents($duplicatesLogFile, str_repeat('=', 80) . "\n\n", FILE_APPEND);
         }
         
         // First, get page 1 to determine total pages
@@ -65,7 +81,8 @@ class SyncWarehouseVariants extends Command
         $skipped = 0;
         $failed = 0;
         $page = 1;
-        $syncedWarehouseIds = [];
+        $syncedShopifyVariantIds = []; // Track by Shopify variant ID instead
+        $duplicates = 0;
         
         // Fetch and save page by page
         do {
@@ -103,6 +120,19 @@ class SyncWarehouseVariants extends Command
                     // Skip if no Shopify variant ID
                     if (!$shopifyVariantId) {
                         $skipped++;
+                        
+                        // Log skipped variant details if flag is set
+                        if ($logSkipped) {
+                            $logEntry = sprintf(
+                                "Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s | Reason: No Shopify variant ID\n",
+                                $variant['id'] ?? 'N/A',
+                                $variant['variant_name'] ?? 'N/A',
+                                $sku ?? 'N/A',
+                                $variant['stock'] ?? '0'
+                            );
+                            file_put_contents($skippedLogFile, $logEntry, FILE_APPEND);
+                        }
+                        
                         continue;
                     }
                     
@@ -120,14 +150,53 @@ class SyncWarehouseVariants extends Command
                         ]
                     );
                     
-                    // Only count if successfully saved
-                    if ($warehouseVariant && $warehouseVariant->exists) {
-                        // Track this warehouse ID as synced
-                        $syncedWarehouseIds[] = $variant['id'];
+                    // Track by Shopify variant ID (the important one for syncing)
+                    if (!isset($syncedShopifyVariantIds[$shopifyVariantId])) {
+                        $syncedShopifyVariantIds[$shopifyVariantId] = [
+                            'warehouse_id' => $variant['id'],
+                            'variant_name' => $variant['variant_name'] ?? 'N/A',
+                            'sku' => $sku ?? 'N/A',
+                            'stock' => $variant['stock'] ?? 0
+                        ];
                         $synced++;
+                    } else {
+                        // Same Shopify variant ID appears in multiple warehouse variants
+                        $duplicates++;
+                        if ($logSkipped) {
+                            $firstRecord = $syncedShopifyVariantIds[$shopifyVariantId];
+                            $logEntry = sprintf(
+                                "Shopify Variant ID: %s\n" .
+                                "  First Record  -> Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s\n" .
+                                "  Duplicate     -> Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s\n\n",
+                                $shopifyVariantId,
+                                $firstRecord['warehouse_id'],
+                                $firstRecord['variant_name'],
+                                $firstRecord['sku'],
+                                $firstRecord['stock'],
+                                $variant['id'] ?? 'N/A',
+                                $variant['variant_name'] ?? 'N/A',
+                                $sku ?? 'N/A',
+                                $variant['stock'] ?? '0'
+                            );
+                            file_put_contents($duplicatesLogFile, $logEntry, FILE_APPEND);
+                        }
                     }
                 } catch (\Exception $e) {
                     $failed++;
+                    
+                    // Log failed variant
+                    if ($logSkipped) {
+                        $logEntry = sprintf(
+                            "Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s | Reason: Exception - %s\n",
+                            $variant['id'] ?? 'N/A',
+                            $variant['variant_name'] ?? 'N/A',
+                            $sku ?? 'N/A',
+                            $variant['stock'] ?? '0',
+                            $e->getMessage()
+                        );
+                        file_put_contents($skippedLogFile, $logEntry, FILE_APPEND);
+                    }
+                    
                     $this->error("\nFailed to sync variant ID {$variant['id']}: " . $e->getMessage());
                 }
             }
@@ -151,18 +220,33 @@ class SyncWarehouseVariants extends Command
         $this->info('Cleaning up stale records...');
         $deleted = 0;
         
-        if (!empty($syncedWarehouseIds)) {
+        if (!empty($syncedShopifyVariantIds)) {
+            // Get warehouse IDs that were synced (warehouse_id from first record of each Shopify variant)
+            $syncedWarehouseIds = array_column($syncedShopifyVariantIds, 'warehouse_id');
             $deleted = WarehouseVariant::whereNotIn('warehouse_id', $syncedWarehouseIds)->delete();
         }
         
         $this->info("✅ Sync complete!");
-        $this->info("📊 Synced: {$synced}");
+        $this->info("📊 Synced: {$synced} unique Shopify variants");
         $this->info("⏭️  Skipped: {$skipped} (no Shopify variant ID)");
+        if ($duplicates > 0) {
+            $this->warn("🔄 Duplicates: {$duplicates} (same Shopify variant ID in multiple warehouse records)");
+        }
         if ($deleted > 0) {
             $this->info("🗑️  Deleted: {$deleted} (no longer in warehouse)");
         }
         if ($failed > 0) {
             $this->warn("❌ Failed: {$failed}");
+        }
+        
+        if ($logSkipped) {
+            $this->newLine();
+            $this->info("📝 Skipped variants logged to:");
+            $this->line("   {$skippedLogFile}");
+            if ($duplicates > 0) {
+                $this->info("📝 Duplicate Shopify variant IDs logged to:");
+                $this->line("   {$duplicatesLogFile}");
+            }
         }
         
         return 0;
