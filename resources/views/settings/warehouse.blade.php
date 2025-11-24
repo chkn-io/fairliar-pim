@@ -66,6 +66,40 @@
                             @enderror
                         </div>
 
+                        <hr class="my-4">
+
+                        <h5 class="mb-3">🔄 Automatic Sync Settings</h5>
+
+                        <div class="mb-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" 
+                                       type="checkbox" 
+                                       id="enable_warehouse_sync" 
+                                       name="enable_warehouse_sync" 
+                                       value="1"
+                                       {{ old('enable_warehouse_sync', $settings->where('key', 'enable_warehouse_sync')->first()->value ?? '1') == '1' ? 'checked' : '' }}>
+                                <label class="form-check-label" for="enable_warehouse_sync">
+                                    <strong>Enable Warehouse Sync</strong>
+                                </label>
+                            </div>
+                            <div class="form-text ms-4">When enabled, the system will sync variants from the warehouse API (via cron or manual command)</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" 
+                                       type="checkbox" 
+                                       id="enable_shopify_stock_sync" 
+                                       name="enable_shopify_stock_sync" 
+                                       value="1"
+                                       {{ old('enable_shopify_stock_sync', $settings->where('key', 'enable_shopify_stock_sync')->first()->value ?? '1') == '1' ? 'checked' : '' }}>
+                                <label class="form-check-label" for="enable_shopify_stock_sync">
+                                    <strong>Enable Shopify Stock Sync</strong>
+                                </label>
+                            </div>
+                            <div class="form-text ms-4">When enabled, the system will push stock updates to Shopify for variants with pim_sync = true</div>
+                        </div>
+
                         <div class="alert alert-info">
                             <strong>ℹ️ Note:</strong> Changing these settings will clear the warehouse cache. The new credentials will be used for all subsequent API calls.
                         </div>
@@ -111,6 +145,32 @@
                             <tr>
                                 <th>Last Updated:</th>
                                 <td>{{ $settings->where('key', 'warehouse_api_token')->first()->updated_at->format('Y-m-d H:i:s') ?? 'Never' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Warehouse Sync:</th>
+                                <td>
+                                    @php
+                                        $warehouseSyncEnabled = $settings->where('key', 'enable_warehouse_sync')->first()->value ?? '1';
+                                    @endphp
+                                    @if($warehouseSyncEnabled == '1')
+                                        <span class="badge bg-success">Enabled</span>
+                                    @else
+                                        <span class="badge bg-danger">Disabled</span>
+                                    @endif
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Shopify Stock Sync:</th>
+                                <td>
+                                    @php
+                                        $shopifySyncEnabled = $settings->where('key', 'enable_shopify_stock_sync')->first()->value ?? '1';
+                                    @endphp
+                                    @if($shopifySyncEnabled == '1')
+                                        <span class="badge bg-success">Enabled</span>
+                                    @else
+                                        <span class="badge bg-danger">Disabled</span>
+                                    @endif
+                                </td>
                             </tr>
                         </tbody>
                     </table>

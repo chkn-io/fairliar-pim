@@ -38,12 +38,16 @@ class SettingsController extends Controller
         $request->validate([
             'warehouse_api_url' => 'required|url',
             'warehouse_api_token' => 'required|string',
-            'default_location_id' => 'nullable|string'
+            'default_location_id' => 'nullable|string',
+            'enable_warehouse_sync' => 'nullable|boolean',
+            'enable_shopify_stock_sync' => 'nullable|boolean'
         ]);
 
         Setting::set('warehouse_api_url', $request->warehouse_api_url, 'string', 'warehouse', 'Warehouse API endpoint URL');
         Setting::set('warehouse_api_token', $request->warehouse_api_token, 'text', 'warehouse', 'Warehouse API Bearer Token');
         Setting::set('default_location_id', $request->default_location_id, 'string', 'warehouse', 'Default Shopify Location ID');
+        Setting::set('enable_warehouse_sync', $request->enable_warehouse_sync ? '1' : '0', 'boolean', 'warehouse', 'Enable automatic warehouse sync');
+        Setting::set('enable_shopify_stock_sync', $request->enable_shopify_stock_sync ? '1' : '0', 'boolean', 'warehouse', 'Enable automatic Shopify stock sync');
 
         // Clear warehouse cache when settings change
         Cache::forget('warehouse_all_variants');

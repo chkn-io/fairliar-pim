@@ -28,6 +28,15 @@ class SyncWarehouseVariants extends Command
      */
     public function handle()
     {
+        // Check if warehouse sync is enabled
+        $syncEnabled = Setting::get('enable_warehouse_sync', '1');
+        
+        if ($syncEnabled !== '1') {
+            $this->warn('⚠️  Warehouse sync is disabled in settings');
+            $this->info('To enable it, go to Settings > Warehouse and toggle "Enable Warehouse Sync"');
+            return 0;
+        }
+        
         $warehouseService = new WarehouseService();
         
         $this->info('Starting warehouse variants sync...');
