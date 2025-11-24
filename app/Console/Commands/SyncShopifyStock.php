@@ -30,9 +30,9 @@ class SyncShopifyStock extends Command
     public function handle()
     {
         // Check if Shopify stock sync is enabled
-        $syncEnabled = Setting::get('enable_shopify_stock_sync', '1');
+        $syncEnabled = Setting::get('enable_shopify_stock_sync', true);
         
-        if ($syncEnabled !== '1') {
+        if (!$syncEnabled) {
             $this->warn('⚠️  Shopify stock sync is disabled in settings');
             $this->info('To enable it, go to Settings > Warehouse and toggle "Enable Shopify Stock Sync"');
             return 0;

@@ -59,19 +59,12 @@ class StockSyncController extends Controller
             if (!empty($search)) {
                 $searchTerm = trim($search);
                 // Shopify search query format for productVariants
-                // Wildcards are needed for partial matching
-                
-                // Check if it's purely numeric (variant ID search)
-                if (is_numeric($searchTerm)) {
-                    $searchQuery = ' AND (id:' . $searchTerm . ')';
-                } else {
-                    // Text search with wildcards for partial matching
-                    $searchQuery = ' AND (' .
-                        'product_title:*' . $searchTerm . '* OR ' .
-                        'title:*' . $searchTerm . '* OR ' .
-                        'sku:*' . $searchTerm . '* OR ' .
-                        'barcode:*' . $searchTerm . '*)';
-                }
+                // Always search all fields with wildcards for partial matching
+                $searchQuery = ' AND (' .
+                    'product_title:*' . $searchTerm . '* OR ' .
+                    'title:*' . $searchTerm . '* OR ' .
+                    'sku:*' . $searchTerm . '* OR ' .
+                    'barcode:*' . $searchTerm . '*)';
             }
             
             // Store cursors in session for pagination
@@ -108,6 +101,8 @@ class StockSyncController extends Controller
             $cursors[$page + 1] = $nextCursor;
             session([$sessionKey => $cursors]);
         }
+
+        // dd($shopifyVariants);
         
         // Build comparison data WITHOUT warehouse stock (will be loaded via AJAX)
         foreach ($shopifyVariants as $variant) {

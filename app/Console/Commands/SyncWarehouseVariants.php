@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Services\WarehouseService;
 use App\Models\WarehouseVariant;
+use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 
 class SyncWarehouseVariants extends Command
@@ -29,9 +30,9 @@ class SyncWarehouseVariants extends Command
     public function handle()
     {
         // Check if warehouse sync is enabled
-        $syncEnabled = Setting::get('enable_warehouse_sync', '1');
+        $syncEnabled = Setting::get('enable_warehouse_sync', true);
         
-        if ($syncEnabled !== '1') {
+        if (!$syncEnabled) {
             $this->warn('⚠️  Warehouse sync is disabled in settings');
             $this->info('To enable it, go to Settings > Warehouse and toggle "Enable Warehouse Sync"');
             return 0;
@@ -133,10 +134,11 @@ class SyncWarehouseVariants extends Command
                         // Log skipped variant details if flag is set
                         if ($logSkipped) {
                             $logEntry = sprintf(
-                                "Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s | Reason: No Shopify variant ID\n",
+                                "Warehouse ID: %s | Variant: %s | SKU: %s | Barcode1: %s | Stock: %s | Reason: No Shopify variant ID\n",
                                 $variant['id'] ?? 'N/A',
                                 $variant['variant_name'] ?? 'N/A',
                                 $sku ?? 'N/A',
+                                $variant['barcode1'] ?? 'N/A',
                                 $variant['stock'] ?? '0'
                             );
                             file_put_contents($skippedLogFile, $logEntry, FILE_APPEND);
