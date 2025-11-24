@@ -58,12 +58,13 @@ class StockSyncController extends Controller
             $searchQuery = '';
             if (!empty($search)) {
                 $searchTerm = trim($search);
-                // Shopify search query format
+                // Shopify search query format for productVariants
+                // Use product_title for product name, title for variant name
                 $searchQuery = ' AND (' .
+                    'product_title:*' . $searchTerm . '* OR ' .
                     'title:*' . $searchTerm . '* OR ' .
                     'sku:*' . $searchTerm . '* OR ' .
-                    'barcode:*' . $searchTerm . '* OR ' .
-                    'product_id:' . $searchTerm . ')'; 
+                    'barcode:*' . $searchTerm . '*)'; 
             }
             
             // Store cursors in session for pagination
