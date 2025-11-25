@@ -5,11 +5,6 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>📦 Stock Sync</h1>
         <div>
-            @if(auth()->user()->role === 'admin')
-            <button class="btn btn-warning me-2" onclick="syncWarehouse()">
-                ⚙️ Sync Warehouse
-            </button>
-            @endif
             @if(count($syncData) > 0)
             <a href="{{ route('stock-sync.export', ['location_id' => $selectedLocation]) }}" 
                class="btn btn-success">
@@ -25,20 +20,6 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     @endif
-
-    <!-- Warehouse Sync Status -->
-    <div class="alert alert-info alert-dismissible fade show" role="alert">
-        <strong>📊 Warehouse Data Status:</strong>
-        @if($warehouseVariantsCount > 0)
-            {{ number_format($warehouseVariantsCount) }} variants synced
-            @if($lastSyncTime)
-                (Last sync: {{ $lastSyncTime->diffForHumans() }})
-            @endif
-        @else
-            No warehouse data synced yet. Click "Sync Warehouse" to fetch data from Sellmate.
-        @endif
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
 
     <!-- Search and Filter Form -->
     <div class="card mb-4">
@@ -582,61 +563,6 @@ function syncStock(variantId, inventoryItemId, locationId, warehouseStock, produ
     });
 }
 
-function syncWarehouse() {
-    Swal.fire({
-        title: 'Sync Warehouse Data?',
-        text: 'This will sync all warehouse variants from Sellmate API. This may take several minutes.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#ffc107',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Yes, Start Sync',
-        cancelButtonText: 'Cancel'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            showLoading('Syncing warehouse data...', 'Fetching all variants from Sellmate API. This will take several minutes.');
-            
-            fetch('{{ route('warehouse.sync') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('loadingOverlay').style.display = 'none';
-                
-                if (data.success) {
-                    Swal.fire({
-                        title: 'Success!',
-                        html: `Warehouse sync completed successfully!<br>Variants synced: <strong>${data.count}</strong>`,
-                        icon: 'success',
-                        confirmButtonColor: '#28a745'
-                    }).then(() => {
-                        location.reload();
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'Error!',
-                        text: 'Sync failed: ' + data.message,
-                        icon: 'error',
-                        confirmButtonColor: '#dc3545'
-                    });
-                }
-            })
-            .catch(error => {
-                document.getElementById('loadingOverlay').style.display = 'none';
-                Swal.fire({
-                    title: 'Error!',
-                    text: 'Sync failed: ' + error.message,
-                    icon: 'error',
-                    confirmButtonColor: '#dc3545'
-                });
-            });
-        }
-    });
-}
 
 // Show loading on pagination clicks
 document.addEventListener('DOMContentLoaded', function() {
