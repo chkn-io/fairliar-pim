@@ -170,7 +170,9 @@
                                 <span class="badge bg-primary">{{ $item['shopify_stock'] }}</span>
                             </td>
                             <td class="text-center">
-                                <span class="warehouse-stock" data-variant-id="{{ $item['variant_id'] }}">
+                                <span class="warehouse-stock" 
+                                      data-variant-id="{{ $item['variant_id'] }}"
+                                      data-sku="{{ $item['sku'] }}">
                                     <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
                                 </span>
                             </td>
@@ -356,6 +358,9 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
+            // Pause background requests to prioritize this action
+            pauseWarehouseRequests();
+            
             showLoading('Updating sync status...', 'Please wait...');
             
             fetch('{{ route('stock-sync.toggle-pim-sync') }}', {
@@ -375,14 +380,73 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
                 document.getElementById('loadingOverlay').style.display = 'none';
                 
                 if (data.success) {
+                    // Update the row instead of reloading
+                    const row = document.querySelector(`button[onclick*="${variantGid}"]`).closest('tr');
+                    const statusCell = row.querySelector('td:nth-child(5)'); // Sync Status column
+                    const actionsCell = row.querySelector('td:last-child'); // Actions column
+                    
+                    // Update status badge
+                    if (data.pim_sync === 'true') {
+                        statusCell.innerHTML = '<span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>';
+                    } else if (data.pim_sync === 'false') {
+                        statusCell.innerHTML = '<span class="badge bg-warning text-dark" title="This variant is excluded from PIM sync">✗ Excluded</span>';
+                    }
+                    
+                    // Update action buttons
+                    const variantData = {
+                        variantGid: variantGid,
+                        productGid: productGid,
+                        productTitle: productTitle
+                    };
+                    
+                    const buttonsHtml = actionsCell.innerHTML;
+                    const viewButton = actionsCell.querySelector('a[target="_blank"]');
+                    const syncButton = actionsCell.querySelector('.sync-stock-btn');
+                    
+                    // Rebuild buttons container
+                    let newButtonsHtml = '<div class="d-flex gap-1 justify-content-center flex-wrap">';
+                    
+                    // Keep View button
+                    if (viewButton) {
+                        newButtonsHtml += viewButton.outerHTML;
+                    }
+                    
+                    // Add appropriate Include/Exclude buttons
+                    if (data.pim_sync === 'true') {
+                        newButtonsHtml += `<button onclick="togglePimSync('${variantGid}', '${productGid}', '${productTitle.replace(/'/g, "\\'")}', true)" 
+                                class="btn btn-sm btn-warning"
+                                title="Exclude this variant from PIM sync"
+                                style="min-width: 80px;">
+                            <i class="bi bi-x-circle"></i> Exclude
+                        </button>`;
+                    } else if (data.pim_sync === 'false') {
+                        newButtonsHtml += `<button onclick="togglePimSync('${variantGid}', '${productGid}', '${productTitle.replace(/'/g, "\\'")}', false)" 
+                                class="btn btn-sm btn-success"
+                                title="Include this variant in PIM sync"
+                                style="min-width: 80px;">
+                            <i class="bi bi-check-circle"></i> Include
+                        </button>`;
+                    }
+                    
+                    // Keep Sync button if it exists
+                    if (syncButton) {
+                        newButtonsHtml += syncButton.outerHTML;
+                    }
+                    
+                    newButtonsHtml += '</div>';
+                    actionsCell.innerHTML = newButtonsHtml;
+                    
+                    // Show success message
                     Swal.fire({
                         title: 'Success!',
                         text: data.message,
                         icon: 'success',
-                        confirmButtonColor: '#28a745'
-                    }).then(() => {
-                        location.reload();
+                        timer: 2000,
+                        showConfirmButton: false
                     });
+                    
+                    // Resume warehouse requests after action completes
+                    resumeWarehouseRequests();
                 } else {
                     Swal.fire({
                         title: 'Error!',
@@ -400,6 +464,9 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
                     icon: 'error',
                     confirmButtonColor: '#dc3545'
                 });
+                
+                // Resume warehouse requests even on error
+                resumeWarehouseRequests();
             });
         }
     });
@@ -418,6 +485,9 @@ function syncStock(variantId, inventoryItemId, locationId, warehouseStock, produ
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
+            // Pause background requests to prioritize this action
+            pauseWarehouseRequests();
+            
             showLoading('Syncing stock...', 'Updating Shopify inventory...');
             
             fetch('{{ route('stock-sync.sync-stock') }}', {
@@ -438,14 +508,37 @@ function syncStock(variantId, inventoryItemId, locationId, warehouseStock, produ
                 document.getElementById('loadingOverlay').style.display = 'none';
                 
                 if (data.success) {
+                    // Update the row instead of reloading
+                    const syncButton = document.querySelector(`.sync-stock-btn[data-variant-id="${variantId}"]`);
+                    const row = syncButton.closest('tr');
+                    
+                    // Update Shopify Stock column
+                    const shopifyStockCell = row.querySelector('td:nth-child(6)'); // Shopify Stock column
+                    shopifyStockCell.innerHTML = `<span class="badge bg-primary">${data.new_stock}</span>`;
+                    
+                    // Update Difference column
+                    const differenceCell = row.querySelector('.stock-difference');
+                    const diff = data.new_stock - warehouseStock;
+                    let diffClass = 'text-muted';
+                    if (diff > 0) diffClass = 'text-success';
+                    else if (diff < 0) diffClass = 'text-danger';
+                    differenceCell.innerHTML = `<span class="fw-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</span>`;
+                    
+                    // Disable sync button since stocks now match
+                    syncButton.disabled = true;
+                    syncButton.dataset.shopifyStock = data.new_stock;
+                    
+                    // Show success message
                     Swal.fire({
                         title: 'Success!',
-                        html: `Stock synced successfully!<br>New stock level: <strong>${data.new_stock}</strong>`,
+                        text: `Stock synced successfully! Updated to ${data.new_stock} units.`,
                         icon: 'success',
-                        confirmButtonColor: '#28a745'
-                    }).then(() => {
-                        location.reload();
+                        timer: 2000,
+                        showConfirmButton: false
                     });
+                    
+                    // Resume warehouse requests after action completes
+                    resumeWarehouseRequests();
                 } else {
                     Swal.fire({
                         title: 'Error!',
@@ -463,6 +556,9 @@ function syncStock(variantId, inventoryItemId, locationId, warehouseStock, produ
                     icon: 'error',
                     confirmButtonColor: '#dc3545'
                 });
+                
+                // Resume warehouse requests even on error
+                resumeWarehouseRequests();
             });
         }
     });
@@ -530,97 +626,251 @@ document.addEventListener('DOMContentLoaded', function() {
     paginationLinks.forEach(link => {
         link.addEventListener('click', function(e) {
             if (!this.parentElement.classList.contains('disabled')) {
+                // Cancel all pending warehouse stock requests
+                cancelAllWarehouseRequests();
                 showLoading('Loading page...', 'Fetching variants from Shopify...');
             }
         });
     });
     
+    // Cancel requests when changing location
+    const locationSelect = document.querySelector('select[name="location_id"]');
+    if (locationSelect) {
+        locationSelect.addEventListener('change', function() {
+            cancelAllWarehouseRequests();
+        });
+    }
+    
+    // Cancel requests when changing filters
+    const searchForm = document.querySelector('form');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function() {
+            cancelAllWarehouseRequests();
+        });
+    }
+    
     // Fetch warehouse stocks after page load
     fetchWarehouseStocks();
 });
 
-function fetchWarehouseStocks() {
-    // Get all variant IDs from the table
-    const variantElements = document.querySelectorAll('.warehouse-stock[data-variant-id]');
-    const variantIds = Array.from(variantElements).map(el => el.dataset.variantId);
+// Track all pending requests
+let pendingWarehouseRequests = [];
+let warehouseRequestQueue = [];
+let isProcessingWarehouseQueue = false;
+let warehouseRequestsPaused = false;
+
+function pauseWarehouseRequests() {
+    if (warehouseRequestsPaused) return;
     
-    if (variantIds.length === 0) return;
+    warehouseRequestsPaused = true;
+    console.log('⏸️ Warehouse stock requests paused');
+}
+
+function resumeWarehouseRequests() {
+    if (!warehouseRequestsPaused) return;
     
-    // Fetch warehouse stocks via AJAX
-    fetch('{{ route('stock-sync.get-warehouse-stock') }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({ variant_ids: variantIds })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Update warehouse stock for each variant
-            variantElements.forEach(el => {
-                const variantId = el.dataset.variantId;
-                const warehouseStock = data.stocks[variantId];
-                
-                if (warehouseStock !== undefined && warehouseStock !== null) {
-                    el.innerHTML = `<span class="badge bg-info">${warehouseStock}</span>`;
-                } else {
-                    el.innerHTML = '<span class="badge bg-secondary">N/A</span>';
-                }
-            });
-            
-            // Update difference column
-            document.querySelectorAll('.stock-difference[data-variant-id]').forEach(el => {
-                const variantId = el.dataset.variantId;
-                const shopifyStock = parseInt(el.dataset.shopifyStock);
-                const warehouseStock = data.stocks[variantId];
-                
-                if (warehouseStock !== undefined && warehouseStock !== null) {
-                    const diff = shopifyStock - warehouseStock;
-                    let diffClass = 'text-muted';
-                    if (diff > 0) diffClass = 'text-success';
-                    else if (diff < 0) diffClass = 'text-danger';
-                    
-                    el.innerHTML = `<span class="fw-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</span>`;
-                } else {
-                    el.innerHTML = '<span class="text-muted">-</span>';
-                }
-            });
-            
-            // Enable sync buttons with warehouse stock data
-            document.querySelectorAll('.sync-stock-btn[data-variant-id]').forEach(btn => {
-                const variantId = btn.dataset.variantId;
-                const warehouseStock = data.stocks[variantId];
-                const shopifyStock = parseInt(btn.dataset.shopifyStock);
-                
-                if (warehouseStock !== undefined && warehouseStock !== null) {
-                    btn.dataset.warehouseStock = warehouseStock;
-                    // Enable button only if stocks don't match
-                    if (shopifyStock !== warehouseStock) {
-                        btn.disabled = false;
-                        btn.onclick = function() {
-                            syncStock(
-                                btn.dataset.variantId,
-                                btn.dataset.inventoryItemId,
-                                btn.dataset.locationId,
-                                warehouseStock,
-                                btn.dataset.productTitle,
-                                btn.dataset.variantTitle
-                            );
-                        };
-                    }
-                }
-            });
+    warehouseRequestsPaused = false;
+    console.log('▶️ Resuming warehouse stock requests');
+    
+    // Resume processing if there are items in queue
+    if (warehouseRequestQueue.length > 0 && !isProcessingWarehouseQueue) {
+        processWarehouseQueue();
+    }
+}
+
+function cancelAllWarehouseRequests() {
+    // Abort all pending fetch requests
+    pendingWarehouseRequests.forEach(controller => {
+        try {
+            controller.abort();
+        } catch (e) {
+            // Ignore abort errors
         }
-    })
-    .catch(error => {
-        console.error('Failed to fetch warehouse stocks:', error);
-        // Show N/A on error
-        variantElements.forEach(el => {
-            el.innerHTML = '<span class="badge bg-secondary">N/A</span>';
+    });
+    
+    // Clear the arrays
+    pendingWarehouseRequests = [];
+    warehouseRequestQueue = [];
+    isProcessingWarehouseQueue = false;
+    warehouseRequestsPaused = false;
+    
+    console.log('🛑 All warehouse stock requests cancelled');
+}
+
+function fetchWarehouseStocks() {
+    // Get all SKU elements from the table
+    const stockElements = document.querySelectorAll('.warehouse-stock[data-sku]');
+    
+    if (stockElements.length === 0) return;
+    
+    // Clear any existing queue
+    warehouseRequestQueue = [];
+    
+    // Build queue of requests
+    stockElements.forEach((el, index) => {
+        warehouseRequestQueue.push({
+            element: el,
+            sku: el.dataset.sku,
+            variantId: el.dataset.variantId,
+            index: index
         });
     });
+    
+    console.log(`📦 Queued ${warehouseRequestQueue.length} warehouse stock requests`);
+    
+    // Start processing queue
+    processWarehouseQueue();
+}
+
+function processWarehouseQueue() {
+    if (isProcessingWarehouseQueue) return;
+    if (warehouseRequestQueue.length === 0) return;
+    if (warehouseRequestsPaused) {
+        console.log('⏸️ Queue processing paused, waiting to resume...');
+        return;
+    }
+    
+    isProcessingWarehouseQueue = true;
+    const totalCount = warehouseRequestQueue.length + pendingWarehouseRequests.length;
+    
+    // Process next 3 requests in parallel
+    const batchSize = 3;
+    const batch = warehouseRequestQueue.splice(0, batchSize);
+    
+    batch.forEach(item => {
+        const { element: el, sku, variantId } = item;
+        
+        // Show loading state
+        el.innerHTML = '<span class="badge bg-secondary"><span class="spinner-border spinner-border-sm" role="status"></span></span>';
+        
+        if (!sku) {
+            el.innerHTML = '<span class="badge bg-secondary">No SKU</span>';
+            updateDifference(variantId, null);
+            checkQueueComplete();
+            return;
+        }
+        
+        // Create AbortController for this request
+        const controller = new AbortController();
+        pendingWarehouseRequests.push(controller);
+        
+        fetch('{{ route('stock-sync.get-warehouse-stock-by-sku') }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ sku: sku }),
+            signal: controller.signal
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove controller from pending list
+            const index = pendingWarehouseRequests.indexOf(controller);
+            if (index > -1) pendingWarehouseRequests.splice(index, 1);
+            
+            if (data.success && data.stock !== null) {
+                el.innerHTML = `<span class="badge bg-info">${data.stock}</span>`;
+                el.dataset.warehouseStock = data.stock;
+                
+                // Update difference column
+                updateDifference(variantId, data.stock);
+                
+                // Update sync button
+                updateSyncButton(variantId, data.stock);
+            } else {
+                el.innerHTML = '<span class="badge bg-secondary">N/A</span>';
+                updateDifference(variantId, null);
+            }
+            
+            checkQueueComplete();
+        })
+        .catch(error => {
+            // Remove controller from pending list
+            const index = pendingWarehouseRequests.indexOf(controller);
+            if (index > -1) pendingWarehouseRequests.splice(index, 1);
+            
+            if (error.name === 'AbortError') {
+                // Request was cancelled
+                el.innerHTML = '<span class="badge bg-secondary">Cancelled</span>';
+            } else {
+                console.error(`Failed to fetch warehouse stock for SKU ${sku}:`, error);
+                el.innerHTML = '<span class="badge bg-danger">Error</span>';
+            }
+            updateDifference(variantId, null);
+            checkQueueComplete();
+        });
+    });
+}
+
+function checkQueueComplete() {
+    // Continue processing queue if there are more items
+    if (warehouseRequestQueue.length > 0) {
+        setTimeout(() => {
+            isProcessingWarehouseQueue = false;
+            processWarehouseQueue();
+        }, 50); // Small delay between batches
+    } else if (pendingWarehouseRequests.length === 0) {
+        isProcessingWarehouseQueue = false;
+        console.log('✅ All warehouse stock requests completed');
+    }
+}
+
+function prioritizeRequest(sku, variantId, element) {
+    // Check if request is already pending
+    const existingIndex = warehouseRequestQueue.findIndex(item => item.sku === sku);
+    
+    if (existingIndex > -1) {
+        // Move to front of queue
+        const item = warehouseRequestQueue.splice(existingIndex, 1)[0];
+        warehouseRequestQueue.unshift(item);
+        console.log(`⚡ Prioritized request for SKU: ${sku}`);
+    }
+}
+
+function updateDifference(variantId, warehouseStock) {
+    const diffEl = document.querySelector(`.stock-difference[data-variant-id="${variantId}"]`);
+    if (!diffEl) return;
+    
+    const shopifyStock = parseInt(diffEl.dataset.shopifyStock);
+    
+    if (warehouseStock !== null && warehouseStock !== undefined) {
+        const diff = shopifyStock - warehouseStock;
+        let diffClass = 'text-muted';
+        if (diff > 0) diffClass = 'text-success';
+        else if (diff < 0) diffClass = 'text-danger';
+        
+        diffEl.innerHTML = `<span class="fw-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</span>`;
+    } else {
+        diffEl.innerHTML = '<span class="text-muted">-</span>';
+    }
+}
+
+function updateSyncButton(variantId, warehouseStock) {
+    const btn = document.querySelector(`.sync-stock-btn[data-variant-id="${variantId}"]`);
+    if (!btn) return;
+    
+    const shopifyStock = parseInt(btn.dataset.shopifyStock);
+    
+    if (warehouseStock !== null && warehouseStock !== undefined) {
+        btn.dataset.warehouseStock = warehouseStock;
+        // Enable button only if stocks don't match
+        if (shopifyStock !== warehouseStock) {
+            btn.disabled = false;
+            btn.onclick = function() {
+                syncStock(
+                    btn.dataset.variantId,
+                    btn.dataset.inventoryItemId,
+                    btn.dataset.locationId,
+                    warehouseStock,
+                    btn.dataset.productTitle,
+                    btn.dataset.variantTitle
+                );
+            };
+        } else {
+            btn.disabled = true;
+        }
+    }
 }
 </script>
 

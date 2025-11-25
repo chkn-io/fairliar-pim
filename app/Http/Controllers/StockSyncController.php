@@ -54,56 +54,55 @@ class StockSyncController extends Controller
         // Use cursor-based pagination with GraphQL sorting
         Log::info('Fetching variants page...', ['page' => $page, 'location_id' => $locationId, 'search' => $search, 'sync_status' => $syncStatusFilter]);
             
-            // Build search query for GraphQL if search term provided
-            $searchQuery = '';
-            if (!empty($search)) {
-                $searchTerm = trim($search);
-                // Shopify search query format for productVariants
-                // Always search all fields with wildcards for partial matching
-                $searchQuery = ' AND (' .
-                    'product_title:*' . $searchTerm . '* OR ' .
-                    'title:*' . $searchTerm . '* OR ' .
-                    'sku:*' . $searchTerm . '* OR ' .
-                    'barcode:*' . $searchTerm . '*)';
-            }
-            
-            // Store cursors in session for pagination
-            $sessionKey = 'stock_sync_cursors_' . ($locationId ?? 'all');
-            $cursors = session($sessionKey, [1 => null]); // Page 1 starts with null cursor
-            
-            // Get cursor for requested page
-            $cursor = $cursors[$page] ?? null;
-            
-            // If we don't have cursor for this page, we need to build up to it
-            if (!isset($cursors[$page]) && $page > 1) {
-                $tempCursor = null;
-                for ($i = 1; $i < $page; $i++) {
-                    if (isset($cursors[$i + 1])) {
-                        $tempCursor = $cursors[$i + 1];
-                    } else {
-                        // Fetch page to get next cursor
-                        $tempResult = $this->shopifyService->getProductVariants(false, $locationId, $tempCursor, $sortKey, $reverse, $searchQuery);
-                        $tempCursor = $tempResult['pageInfo']['endCursor'];
-                        $cursors[$i + 1] = $tempCursor;
-                    }
+        // Build search query for GraphQL if search term provided
+        $searchQuery = '';
+        if (!empty($search)) {
+            $searchTerm = trim($search);
+            // Shopify search query format for productVariants
+            // Always search all fields with wildcards for partial matching
+            $searchQuery = ' AND (' .
+                'product_title:*' . $searchTerm . '* OR ' .
+                'title:*' . $searchTerm . '* OR ' .
+                'sku:*' . $searchTerm . '* OR ' .
+                'barcode:*' . $searchTerm . '*)';
+        }
+        
+        // Store cursors in session for pagination
+        $sessionKey = 'stock_sync_cursors_' . ($locationId ?? 'all') . '_' . md5($search . $syncStatusFilter);
+        $cursors = session($sessionKey, [1 => null]); // Page 1 starts with null cursor
+        
+        // Get cursor for requested page
+        $cursor = $cursors[$page] ?? null;
+        
+        // If we don't have cursor for this page, we need to build up to it
+        if (!isset($cursors[$page]) && $page > 1) {
+            $tempCursor = null;
+            for ($i = 1; $i < $page; $i++) {
+                if (isset($cursors[$i + 1])) {
+                    $tempCursor = $cursors[$i + 1];
+                } else {
+                    // Fetch enough variants to get a full page after filtering
+                    $tempVariants = $this->fetchVariantsUntilCount($perPage, $tempCursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter);
+                    $tempCursor = $tempVariants['cursor'];
+                    $cursors[$i + 1] = $tempCursor;
                 }
-                $cursor = $tempCursor;
-                session([$sessionKey => $cursors]);
             }
-            
-            $result = $this->shopifyService->getProductVariants(false, $locationId, $cursor, $sortKey, $reverse, $searchQuery);
-            $shopifyVariants = $result['variants'];
-            $hasNextPage = $result['pageInfo']['hasNextPage'];
-            $nextCursor = $result['pageInfo']['endCursor'];
-            
-            // Store next page cursor
-            if ($hasNextPage && $nextCursor) {
+            $cursor = $tempCursor;
+            session([$sessionKey => $cursors]);
+        }
+        
+        // Fetch variants with filtering until we have enough for this page
+        $fetchResult = $this->fetchVariantsUntilCount($perPage, $cursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter);
+        $shopifyVariants = $fetchResult['variants'];
+        $hasNextPage = $fetchResult['hasNextPage'];
+        $nextCursor = $fetchResult['cursor'];
+        
+        // Store next page cursor
+        if ($hasNextPage && $nextCursor) {
             $cursors[$page + 1] = $nextCursor;
             session([$sessionKey => $cursors]);
         }
 
-        // dd($shopifyVariants);
-        
         // Build comparison data WITHOUT warehouse stock (will be loaded via AJAX)
         foreach ($shopifyVariants as $variant) {
             $variantId = $variant['variant_id'];
@@ -122,12 +121,7 @@ class StockSyncController extends Controller
 
             $pimSync = $variant['pim_sync'] ?? '';
             
-            // Apply sync status filter
-            if ($syncStatusFilter) {
-                if ($syncStatusFilter === 'included' && $pimSync !== 'true') continue;
-                if ($syncStatusFilter === 'excluded' && $pimSync !== 'false') continue;
-                if ($syncStatusFilter === 'unset' && !empty($pimSync)) continue;
-            }
+            // Note: Filtering already done in fetchVariantsUntilCount
 
             $comparisonData[] = [
                 'variant_id' => $variantId,
@@ -273,6 +267,39 @@ class StockSyncController extends Controller
         return response()->json([
             'success' => true,
             'stocks' => $warehouseStocks
+        ]);
+    }
+
+    /**
+     * Get warehouse stock by SKU (AJAX endpoint)
+     * Fetches stock from warehouse API using SKU/barcode search
+     */
+    public function getWarehouseStockBySku(Request $request)
+    {
+        $sku = $request->input('sku');
+        
+        if (empty($sku)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No SKU provided'
+            ]);
+        }
+        
+        $warehouseData = $this->warehouseService->getStockBySku($sku);
+        
+        if ($warehouseData) {
+            return response()->json([
+                'success' => true,
+                'stock' => $warehouseData['stock'],
+                'warehouse_id' => $warehouseData['warehouse_id'],
+                'variant_name' => $warehouseData['variant_name']
+            ]);
+        }
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Not found in warehouse',
+            'stock' => null
         ]);
     }
 
@@ -478,5 +505,68 @@ class StockSyncController extends Controller
                 'message' => 'Error: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Fetch variants from Shopify until we have the desired count after filtering
+     * 
+     * @param int $desiredCount Number of variants needed after filtering
+     * @param string|null $cursor Starting cursor for pagination
+     * @param string|null $locationId Location ID filter
+     * @param string $sortKey GraphQL sort key
+     * @param bool $reverse Sort direction
+     * @param string $searchQuery Search query string
+     * @param string $syncStatusFilter Sync status filter (included/excluded/unset)
+     * @return array ['variants' => array, 'cursor' => string, 'hasNextPage' => bool]
+     */
+    private function fetchVariantsUntilCount($desiredCount, $cursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter)
+    {
+        $filteredVariants = [];
+        $currentCursor = $cursor;
+        $hasMore = true;
+        $maxAttempts = 10; // Prevent infinite loops
+        $attempts = 0;
+        
+        while (count($filteredVariants) < $desiredCount && $hasMore && $attempts < $maxAttempts) {
+            $attempts++;
+            
+            // Fetch a batch of variants from Shopify
+            $result = $this->shopifyService->getProductVariants(false, $locationId, $currentCursor, $sortKey, $reverse, $searchQuery);
+            $variants = $result['variants'];
+            $hasMore = $result['pageInfo']['hasNextPage'];
+            $currentCursor = $result['pageInfo']['endCursor'];
+            
+            // Apply sync status filter
+            foreach ($variants as $variant) {
+                $pimSync = $variant['pim_sync'] ?? '';
+                
+                $matches = true;
+                if ($syncStatusFilter) {
+                    if ($syncStatusFilter === 'included' && $pimSync !== 'true') $matches = false;
+                    if ($syncStatusFilter === 'excluded' && $pimSync !== 'false') $matches = false;
+                    if ($syncStatusFilter === 'unset' && !empty($pimSync)) $matches = false;
+                }
+                
+                if ($matches) {
+                    $filteredVariants[] = $variant;
+                    
+                    // Stop if we have enough
+                    if (count($filteredVariants) >= $desiredCount) {
+                        break;
+                    }
+                }
+            }
+            
+            // If no more pages available, stop
+            if (!$hasMore) {
+                break;
+            }
+        }
+        
+        return [
+            'variants' => array_slice($filteredVariants, 0, $desiredCount),
+            'cursor' => $currentCursor,
+            'hasNextPage' => $hasMore && (count($filteredVariants) >= $desiredCount)
+        ];
     }
 }

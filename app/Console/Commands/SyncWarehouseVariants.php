@@ -15,7 +15,7 @@ class SyncWarehouseVariants extends Command
      *
      * @var string
      */
-    protected $signature = 'warehouse:sync {--fresh : Truncate table before syncing} {--log-skipped : Log skipped variants to file} {--log-all : Log all variants fetched from API}';
+    protected $signature = 'warehouse:sync {--fresh : Truncate table before syncing} {--log-skipped : Log skipped variants to file} {--log-all : Log all variants fetched from API} {--save-all : Save all variants regardless of Shopify variant ID}';
 
     /**
      * The console command description.
@@ -51,6 +51,7 @@ class SyncWarehouseVariants extends Command
         // Initialize log file for skipped variants if --log-skipped option is used
         $logSkipped = $this->option('log-skipped');
         $logAll = $this->option('log-all');
+        $saveAll = $this->option('save-all');
         $skippedLogFile = storage_path('logs/warehouse-sync-skipped-' . date('Y-m-d_His') . '.log');
         $duplicatesLogFile = storage_path('logs/warehouse-sync-duplicates-' . date('Y-m-d_His') . '.log');
         $allVariantsLogFile = storage_path('logs/warehouse-sync-all-variants-' . date('Y-m-d_His') . '.log');
@@ -118,9 +119,10 @@ class SyncWarehouseVariants extends Command
             // Process each variant in the page
             foreach ($response['data'] as $variant) {
                 try {
-                    // Extract Shopify variant ID and SKU from option_has_code_by_shop
+                    // Extract Shopify variant ID, SKU, and KSU from option_has_code_by_shop
                     $shopifyVariantId = null;
                     $sku = null;
+                    $ksu = null;
                     
                     if (isset($variant['option_has_code_by_shop'])) {
                         foreach ($variant['option_has_code_by_shop'] as $shopCode) {
@@ -132,14 +134,18 @@ class SyncWarehouseVariants extends Command
                             if ($shopCode['shop_id'] == '18') {
                                 $sku = $shopCode['option_code'];
                             }
+                            // shop_id 19 is KSU (shopify_product_ksu)
+                            if ($shopCode['shop_id'] == '19') {
+                                $ksu = $shopCode['option_code'];
+                            }
                         }
                     }
                     
                     $syncStatus = 'NOT_SYNCED';
                     $syncReason = '';
                     
-                    // Skip if no Shopify variant ID
-                    if (!$shopifyVariantId) {
+                    // Skip if no Shopify variant ID (unless --save-all is enabled)
+                    if (!$shopifyVariantId && !$saveAll) {
                         $skipped++;
                         $syncStatus = 'SKIPPED';
                         $syncReason = 'No Shopify variant ID';
@@ -160,12 +166,13 @@ class SyncWarehouseVariants extends Command
                         // Log to all variants file if enabled
                         if ($logAll) {
                             $logEntry = sprintf(
-                                "[%s] Warehouse ID: %s | Shopify Variant ID: %s | Variant: %s | SKU: %s | Barcode1: %s | Stock: %s | Reason: %s\n",
+                                "[%s] Warehouse ID: %s | Shopify Variant ID: %s | Variant: %s | SKU: %s | KSU: %s | Barcode1: %s | Stock: %s | Reason: %s\n",
                                 $syncStatus,
                                 $variant['id'] ?? 'N/A',
                                 'N/A',
                                 $variant['variant_name'] ?? 'N/A',
                                 $sku ?? 'N/A',
+                                $ksu ?? 'N/A',
                                 $variant['barcode1'] ?? 'N/A',
                                 $variant['stock'] ?? '0',
                                 $syncReason
@@ -184,6 +191,7 @@ class SyncWarehouseVariants extends Command
                             'variant_name' => $variant['variant_name'] ?? null,
                             'stock' => (int)($variant['stock'] ?? 0),
                             'sku' => $sku,
+                            'shopify_product_ksu' => $ksu,
                             'cost_price' => $variant['cost_price'] ?? null,
                             'selling_price' => $variant['selling_price'] ?? null,
                             'synced_at' => now(),
@@ -191,16 +199,20 @@ class SyncWarehouseVariants extends Command
                     );
                     
                     // Track by Shopify variant ID (the important one for syncing)
-                    if (!isset($syncedShopifyVariantIds[$shopifyVariantId])) {
-                        $syncedShopifyVariantIds[$shopifyVariantId] = [
+                    // When --save-all is used, track by warehouse_id instead for variants without Shopify ID
+                    $trackingKey = $shopifyVariantId ?? ('warehouse_' . $variant['id']);
+                    
+                    if (!isset($syncedShopifyVariantIds[$trackingKey])) {
+                        $syncedShopifyVariantIds[$trackingKey] = [
                             'warehouse_id' => $variant['id'],
                             'variant_name' => $variant['variant_name'] ?? 'N/A',
                             'sku' => $sku ?? 'N/A',
+                            'ksu' => $ksu ?? 'N/A',
                             'stock' => $variant['stock'] ?? 0
                         ];
                         $synced++;
                         $syncStatus = 'SYNCED';
-                        $syncReason = 'Successfully synced to database';
+                        $syncReason = $shopifyVariantId ? 'Successfully synced to database' : 'Synced without Shopify variant ID (--save-all enabled)';
                     } else {
                         // Same Shopify variant ID appears in multiple warehouse variants
                         $duplicates++;
@@ -208,19 +220,21 @@ class SyncWarehouseVariants extends Command
                         $syncReason = 'Duplicate Shopify variant ID';
                         
                         if ($logSkipped) {
-                            $firstRecord = $syncedShopifyVariantIds[$shopifyVariantId];
+                            $firstRecord = $syncedShopifyVariantIds[$trackingKey];
                             $logEntry = sprintf(
                                 "Shopify Variant ID: %s\n" .
-                                "  First Record  -> Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s\n" .
-                                "  Duplicate     -> Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s\n\n",
-                                $shopifyVariantId,
+                                "  First Record  -> Warehouse ID: %s | Variant: %s | SKU: %s | KSU: %s | Stock: %s\n" .
+                                "  Duplicate     -> Warehouse ID: %s | Variant: %s | SKU: %s | KSU: %s | Stock: %s\n\n",
+                                $shopifyVariantId ?? 'N/A',
                                 $firstRecord['warehouse_id'],
                                 $firstRecord['variant_name'],
                                 $firstRecord['sku'],
+                                $firstRecord['ksu'],
                                 $firstRecord['stock'],
                                 $variant['id'] ?? 'N/A',
                                 $variant['variant_name'] ?? 'N/A',
                                 $sku ?? 'N/A',
+                                $ksu ?? 'N/A',
                                 $variant['stock'] ?? '0'
                             );
                             file_put_contents($duplicatesLogFile, $logEntry, FILE_APPEND);
@@ -230,12 +244,13 @@ class SyncWarehouseVariants extends Command
                     // Log to all variants file if enabled
                     if ($logAll) {
                         $logEntry = sprintf(
-                            "[%s] Warehouse ID: %s | Shopify Variant ID: %s | Variant: %s | SKU: %s | Barcode1: %s | Stock: %s | Reason: %s\n",
+                            "[%s] Warehouse ID: %s | Shopify Variant ID: %s | Variant: %s | SKU: %s | KSU: %s | Barcode1: %s | Stock: %s | Reason: %s\n",
                             $syncStatus,
                             $variant['id'] ?? 'N/A',
-                            $shopifyVariantId,
+                            $shopifyVariantId ?? 'N/A',
                             $variant['variant_name'] ?? 'N/A',
                             $sku ?? 'N/A',
+                            $ksu ?? 'N/A',
                             $variant['barcode1'] ?? 'N/A',
                             $variant['stock'] ?? '0',
                             $syncReason
@@ -248,10 +263,11 @@ class SyncWarehouseVariants extends Command
                     // Log failed variant
                     if ($logSkipped) {
                         $logEntry = sprintf(
-                            "Warehouse ID: %s | Variant: %s | SKU: %s | Stock: %s | Reason: Exception - %s\n",
+                            "Warehouse ID: %s | Variant: %s | SKU: %s | KSU: %s | Stock: %s | Reason: Exception - %s\n",
                             $variant['id'] ?? 'N/A',
                             $variant['variant_name'] ?? 'N/A',
                             $sku ?? 'N/A',
+                            $ksu ?? 'N/A',
                             $variant['stock'] ?? '0',
                             $e->getMessage()
                         );
@@ -261,11 +277,12 @@ class SyncWarehouseVariants extends Command
                     // Log to all variants file if enabled
                     if ($logAll) {
                         $logEntry = sprintf(
-                            "[ERROR] Warehouse ID: %s | Shopify Variant ID: %s | Variant: %s | SKU: %s | Barcode1: %s | Stock: %s | Reason: Exception - %s\n",
+                            "[ERROR] Warehouse ID: %s | Shopify Variant ID: %s | Variant: %s | SKU: %s | KSU: %s | Barcode1: %s | Stock: %s | Reason: Exception - %s\n",
                             $variant['id'] ?? 'N/A',
                             $shopifyVariantId ?? 'N/A',
                             $variant['variant_name'] ?? 'N/A',
                             $sku ?? 'N/A',
+                            $ksu ?? 'N/A',
                             $variant['barcode1'] ?? 'N/A',
                             $variant['stock'] ?? '0',
                             $e->getMessage()

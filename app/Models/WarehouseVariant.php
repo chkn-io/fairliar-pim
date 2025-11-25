@@ -12,6 +12,7 @@ class WarehouseVariant extends Model
         'variant_name',
         'stock',
         'sku',
+        'shopify_product_ksu',
         'cost_price',
         'selling_price',
         'synced_at',

@@ -208,4 +208,69 @@ class WarehouseService
     {
         Cache::forget('warehouse_all_variants');
     }
+
+    /**
+     * Get warehouse stock by SKU (barcode1)
+     * Uses the filter endpoint with barcode1 search
+     * 
+     * @param string $sku The SKU/barcode to search for
+     * @return array|null
+     */
+    public function getStockBySku($sku)
+    {
+        if (empty($sku)) {
+            return null;
+        }
+
+        try {
+            // Build URL with filter parameters as string
+            $url = $this->apiUrl . '?f[]=barcode1,=,' . urlencode($sku) . ',and&c[]=optionHasCodeByShop';
+            
+            $response = $this->client->request('GET', $url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->apiToken,
+                    'Accept' => 'application/json',
+                ]
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            
+            if (isset($data['data']) && is_array($data['data']) && count($data['data']) > 0) {
+                $variant = $data['data'][0]; // Get first result
+                
+                // Extract Shopify variant ID from option_has_code_by_shop
+                $shopifyVariantId = null;
+                if (isset($variant['option_has_code_by_shop'])) {
+                    foreach ($variant['option_has_code_by_shop'] as $shopCode) {
+                        if ($shopCode['shop_id'] == '28') {
+                            $shopifyVariantId = $shopCode['option_code'];
+                            break;
+                        }
+                    }
+                }
+                
+                return [
+                    'warehouse_id' => $variant['id'],
+                    'shopify_variant_id' => $shopifyVariantId,
+                    'variant_name' => $variant['variant_name'] ?? '',
+                    'stock' => (int)($variant['stock'] ?? 0),
+                    'barcode1' => $variant['barcode1'] ?? '',
+                    'sku' => $sku,
+                    'cost_price' => $variant['cost_price'] ?? 0,
+                    'selling_price' => $variant['selling_price'] ?? 0
+                ];
+            }
+
+            return null;
+
+        } catch (RequestException $e) {
+            Log::error('Warehouse API SKU search failed:', [
+                'sku' => $sku,
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+            ]);
+            
+            return null;
+        }
+    }
 }

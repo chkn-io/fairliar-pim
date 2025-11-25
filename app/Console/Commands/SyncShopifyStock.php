@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Services\ShopifyService;
-use App\Models\WarehouseVariant;
+use App\Services\WarehouseService;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
 
@@ -39,6 +39,7 @@ class SyncShopifyStock extends Command
         }
         
         $shopifyService = new ShopifyService();
+        $warehouseService = new WarehouseService();
         $isDryRun = $this->option('dry-run');
         
         // Get location from settings or option
@@ -115,27 +116,21 @@ class SyncShopifyStock extends Command
         
         foreach ($allVariants as $variant) {
             try {
-                // Variant data structure: variant_id, variant_gid, sku, inventory_item_id, total_inventory, etc.
                 $variantId = $variant['variant_id'] ?? null;
-                $sku = $variant['sku'] ?? 'N/A';
+                $sku = $variant['sku'] ?? null;
                 
-                if (!$variantId) {
+                if (!$variantId || !$sku) {
+                    $skippedDetails[] = "Variant ID {$variantId}: Missing SKU";
                     $skipped++;
                     $bar->advance();
                     continue;
                 }
                 
-                // Find matching warehouse variant using shopify_variant_id
-                $warehouseVariant = WarehouseVariant::where('shopify_variant_id', $variantId)->first();
+                // Fetch warehouse stock from API using SKU
+                $warehouseData = $warehouseService->getStockBySku($sku);
                 
-                if (!$warehouseVariant) {
-                    // Debug: Try to find what we have in database for this SKU
-                    $dbVariant = WarehouseVariant::where('sku', $sku)->first();
-                    if ($dbVariant) {
-                        $skippedDetails[] = "SKU {$sku}: DB has shopify_variant_id='{$dbVariant->shopify_variant_id}', Shopify has variant_id='{$variantId}'";
-                    } else {
-                        $skippedDetails[] = "SKU {$sku}: Not found in warehouse database (variant_id='{$variantId}')";
-                    }
+                if (!$warehouseData) {
+                    $skippedDetails[] = "SKU {$sku}: Not found in warehouse API";
                     $skipped++;
                     $bar->advance();
                     continue;
@@ -143,7 +138,7 @@ class SyncShopifyStock extends Command
                 
                 // Get current Shopify stock
                 $shopifyStock = $variant['total_inventory'] ?? 0;
-                $warehouseStock = $warehouseVariant->stock;
+                $warehouseStock = $warehouseData['stock'];
                 
                 // Skip if stocks match
                 if ($shopifyStock == $warehouseStock) {
