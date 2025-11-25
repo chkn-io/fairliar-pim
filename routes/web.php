@@ -37,7 +37,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/inventory/export', [InventoryController::class, 'export'])->name('inventory.export');
 
     // Stock Sync routes
-    Route::get('/stock-sync', [App\Http\Controllers\StockSyncController::class, 'index'])->name('stock-sync.index');
+    
     Route::get('/stock-sync/export', [App\Http\Controllers\StockSyncController::class, 'export'])->name('stock-sync.export');
     Route::get('/stock-sync/clear-cache', [App\Http\Controllers\StockSyncController::class, 'clearCache'])->name('stock-sync.clear-cache');
     Route::post('/stock-sync/get-warehouse-stock', [App\Http\Controllers\StockSyncController::class, 'getWarehouseStock'])->name('stock-sync.get-warehouse-stock');
@@ -63,5 +63,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+        Route::get('/stock-sync', [App\Http\Controllers\StockSyncController::class, 'index'])->name('stock-sync.index');
     });
 });
