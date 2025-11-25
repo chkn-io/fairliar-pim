@@ -136,6 +136,7 @@ class StockSyncController extends Controller
                 'shopify_stock' => $shopifyStock,
                 'warehouse_stock' => null, // Will be loaded via AJAX
                 'pim_sync' => $pimSync,
+                'sync_timestamp' => $variant['sync_timestamp'] ?? '',
                 'inventory_item_id' => $variant['inventory_item_id'] ?? '',
                 'inventory_levels' => $variant['inventory_levels'],
             ];
@@ -487,10 +488,16 @@ class StockSyncController extends Controller
             );
             
             if ($success) {
+                // Update sync timestamp metafield
+                $variantGid = 'gid://shopify/ProductVariant/' . $variantId;
+                $timestamp = now()->toIso8601String();
+                $this->shopifyService->updateVariantMetafield($variantGid, 'custom', 'pim_kr_sync_timestamp', $timestamp);
+                
                 return response()->json([
                     'success' => true,
                     'message' => 'Stock synced successfully from warehouse to Shopify',
-                    'new_stock' => $warehouseStock
+                    'new_stock' => $warehouseStock,
+                    'sync_timestamp' => $timestamp
                 ]);
             } else {
                 return response()->json([

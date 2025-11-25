@@ -122,6 +122,7 @@
                             <th class="text-center">Shopify Stock</th>
                             <th class="text-center">Warehouse Stock</th>
                             <th class="text-center">Difference</th>
+                            <th class="text-center">Last Synced</th>
                             <th class="text-center" style="min-width: 200px;">Actions</th>
                         </tr>
                     </thead>
@@ -180,6 +181,15 @@
                                 <span class="stock-difference" data-variant-id="{{ $item['variant_id'] }}" data-shopify-stock="{{ $item['shopify_stock'] }}">
                                     <span class="text-muted">-</span>
                                 </span>
+                            </td>
+                            <td class="text-center sync-timestamp-cell" data-variant-id="{{ $item['variant_id'] }}">
+                                @if(!empty($item['sync_timestamp']))
+                                    <small class="text-muted" title="{{ $item['sync_timestamp'] }}">
+                                        {{ \Carbon\Carbon::parse($item['sync_timestamp'])->diffForHumans() }}
+                                    </small>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
                             </td>
                             <td class="text-center">
                                 <div class="d-flex gap-1 justify-content-center flex-wrap">
@@ -523,6 +533,14 @@ function syncStock(variantId, inventoryItemId, locationId, warehouseStock, produ
                     if (diff > 0) diffClass = 'text-success';
                     else if (diff < 0) diffClass = 'text-danger';
                     differenceCell.innerHTML = `<span class="fw-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</span>`;
+                    
+                    // Update Last Synced column
+                    if (data.sync_timestamp) {
+                        const timestampCell = row.querySelector('.sync-timestamp-cell');
+                        if (timestampCell) {
+                            timestampCell.innerHTML = `<small class="text-success" title="${data.sync_timestamp}">Just now</small>`;
+                        }
+                    }
                     
                     // Disable sync button since stocks now match
                     syncButton.disabled = true;

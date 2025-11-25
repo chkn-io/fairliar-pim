@@ -763,6 +763,9 @@ class ShopifyService
                         metafield(namespace: "custom", key: "pim_sync") {
                             value
                         }
+                        syncTimestampMetafield: metafield(namespace: "custom", key: "pim_kr_sync_timestamp") {
+                            value
+                        }
                         product {
                             id
                             title
@@ -848,6 +851,7 @@ class ShopifyService
 
                     // Get metafield value from variant (not product)
                     $pimSync = $variant['metafield']['value'] ?? '';
+                    $syncTimestamp = $variant['syncTimestampMetafield']['value'] ?? '';
                     
                     // Extract inventory item ID
                     $inventoryItemId = $variant['inventoryItem']['id'] ?? '';
@@ -861,6 +865,7 @@ class ShopifyService
                         'product_handle' => $product['handle'] ?? '',
                         'product_status' => $product['status'] ?? 'ACTIVE',
                         'pim_sync' => $pimSync,
+                        'sync_timestamp' => $syncTimestamp,
                         'variant_title' => $variant['title'],
                         'sku' => $variant['sku'] ?? '',
                         'barcode' => $variant['barcode'] ?? '',

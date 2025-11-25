@@ -15,7 +15,7 @@ class SyncShopifyStock extends Command
      *
      * @var string
      */
-    protected $signature = 'shopify:sync-stock {--location= : Shopify location ID} {--dry-run : Preview changes without syncing}';
+    protected $signature = 'shopify:sync-stock {--location= : Shopify location ID} {--dry-run : Preview changes without syncing} {--export-missing : Export SKUs not found in warehouse to CSV}';
 
     /**
      * The console command description.
@@ -41,6 +41,7 @@ class SyncShopifyStock extends Command
         $shopifyService = new ShopifyService();
         $warehouseService = new WarehouseService();
         $isDryRun = $this->option('dry-run');
+        $exportMissing = $this->option('export-missing');
         
         // Get location from settings or option
         $locationId = $this->option('location') ?? Setting::get('default_location_id');
@@ -113,6 +114,7 @@ class SyncShopifyStock extends Command
         $errors = [];
         $changes = []; // Track changes for dry-run
         $skippedDetails = []; // Track why variants were skipped
+        $missingInWarehouse = []; // Track variants not found in warehouse for export
         
         foreach ($allVariants as $variant) {
             try {
@@ -130,7 +132,22 @@ class SyncShopifyStock extends Command
                 $warehouseData = $warehouseService->getStockBySku($sku);
                 
                 if (!$warehouseData) {
-                    $skippedDetails[] = "SKU {$sku}: Not found in warehouse API";
+                    $productTitle = $variant['product_title'] ?? 'N/A';
+                    $variantTitle = $variant['variant_title'] ?? 'N/A';
+                    $skippedDetails[] = "SKU {$sku}: Not found in warehouse API | Product: {$productTitle} - {$variantTitle}";
+                    
+                    // Track for export if flag is set
+                    if ($exportMissing) {
+                        $missingInWarehouse[] = [
+                            'variant_id' => $variantId,
+                            'sku' => $sku,
+                            'product_title' => $productTitle,
+                            'variant_title' => $variantTitle,
+                            'shopify_stock' => $variant['total_inventory'] ?? 0,
+                            'product_url' => "https://admin.shopify.com/store/" . parse_url(config('services.shopify.shop_url'), PHP_URL_HOST) . "/products/{$variant['product_id']}"
+                        ];
+                    }
+                    
                     $skipped++;
                     $bar->advance();
                     continue;
@@ -184,6 +201,13 @@ class SyncShopifyStock extends Command
                 );
                 
                 if ($success) {
+                    // Update sync timestamp metafield
+                    $variantGid = $variant['variant_gid'] ?? null;
+                    if ($variantGid) {
+                        $timestamp = now()->toIso8601String();
+                        $shopifyService->updateVariantMetafield($variantGid, 'custom', 'pim_kr_sync_timestamp', $timestamp);
+                    }
+                    
                     $synced++;
                     $bar->setMessage((string)$synced);
                 } else {
@@ -256,6 +280,39 @@ class SyncShopifyStock extends Command
             $this->newLine();
             $this->info("To execute the sync, run without --dry-run flag:");
             $this->line("  php artisan shopify:sync-stock");
+        }
+        
+        // Export missing variants if requested
+        if ($exportMissing && !empty($missingInWarehouse)) {
+            $this->newLine();
+            $filename = 'missing-in-warehouse-' . date('Y-m-d_His') . '.csv';
+            $filepath = storage_path('exports/' . $filename);
+            
+            // Ensure exports directory exists
+            if (!is_dir(storage_path('exports'))) {
+                mkdir(storage_path('exports'), 0755, true);
+            }
+            
+            $fp = fopen($filepath, 'w');
+            
+            // Write headers
+            fputcsv($fp, ['Variant ID', 'SKU', 'Product Title', 'Variant Title', 'Shopify Stock', 'Product URL']);
+            
+            // Write data
+            foreach ($missingInWarehouse as $item) {
+                fputcsv($fp, [
+                    $item['variant_id'],
+                    $item['sku'],
+                    $item['product_title'],
+                    $item['variant_title'],
+                    $item['shopify_stock'],
+                    $item['product_url']
+                ]);
+            }
+            
+            fclose($fp);
+            
+            $this->info("📄 Exported " . count($missingInWarehouse) . " missing variants to: {$filepath}");
         }
         
         return 0;
