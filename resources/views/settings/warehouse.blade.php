@@ -100,6 +100,21 @@
                             <div class="form-text ms-4">When enabled, the system will push stock updates to Shopify for variants with pim_sync = true</div>
                         </div>
 
+                        <div class="mb-4">
+                            <label for="min_stock_threshold" class="form-label fw-bold">Minimum Stock Threshold</label>
+                            <input type="number" 
+                                   class="form-control @error('min_stock_threshold') is-invalid @enderror" 
+                                   id="min_stock_threshold" 
+                                   name="min_stock_threshold" 
+                                   value="{{ old('min_stock_threshold', $settings->where('key', 'min_stock_threshold')->first()->value ?? '2') }}"
+                                   min="0"
+                                   step="1">
+                            <div class="form-text">When warehouse stock is at or below this value, Shopify stock will be set to 0 (prevents selling low-stock items)</div>
+                            @error('min_stock_threshold')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
                         <div class="alert alert-info">
                             <strong>ℹ️ Note:</strong> Changing these settings will clear the warehouse cache. The new credentials will be used for all subsequent API calls.
                         </div>

@@ -43,6 +43,9 @@ class SyncShopifyStock extends Command
         $isDryRun = $this->option('dry-run');
         $exportMissing = $this->option('export-missing');
         
+        // Get minimum stock threshold setting
+        $minStockThreshold = (int) Setting::get('min_stock_threshold', 2);
+        
         // Get location from settings or option
         $locationId = $this->option('location') ?? Setting::get('default_location_id');
         
@@ -58,6 +61,7 @@ class SyncShopifyStock extends Command
         
         $this->info('Starting Shopify stock sync...');
         $this->info("Location ID: {$locationId}");
+        $this->info("Min Stock Threshold: {$minStockThreshold} (warehouse stock <= {$minStockThreshold} will set Shopify to 0)");
         $this->newLine();
         
         // Fetch all variants with pim_sync = 'true'
@@ -169,9 +173,20 @@ class SyncShopifyStock extends Command
                 
                 $warehouseStock = $warehouseData['stock'];
                 
+                // Apply minimum stock threshold logic
+                // If warehouse stock is at or below threshold, set Shopify stock to 0
+                $targetShopifyStock = $warehouseStock;
+                if ($warehouseStock <= $minStockThreshold) {
+                    $targetShopifyStock = 0;
+                }
+                
                 // Skip if stocks match
-                if ($shopifyStock == $warehouseStock) {
-                    $skippedDetails[] = "SKU {$sku}: Stock already matches (Shopify: {$shopifyStock}, Warehouse: {$warehouseStock})";
+                if ($shopifyStock == $targetShopifyStock) {
+                    if ($warehouseStock <= $minStockThreshold && $targetShopifyStock == 0) {
+                        $skippedDetails[] = "SKU {$sku}: Already at 0 (warehouse: {$warehouseStock} <= threshold: {$minStockThreshold})";
+                    } else {
+                        $skippedDetails[] = "SKU {$sku}: Stock already matches (Shopify: {$shopifyStock}, Warehouse: {$warehouseStock})";
+                    }
                     $skipped++;
                     $bar->advance();
                     continue;
@@ -184,7 +199,9 @@ class SyncShopifyStock extends Command
                     'variant' => $variant['variant_title'] ?? 'N/A',
                     'shopify_stock' => $shopifyStock,
                     'warehouse_stock' => $warehouseStock,
-                    'difference' => $warehouseStock - $shopifyStock
+                    'target_stock' => $targetShopifyStock,
+                    'difference' => $targetShopifyStock - $shopifyStock,
+                    'reason' => $warehouseStock <= $minStockThreshold ? "Low stock (≤{$minStockThreshold})" : 'Stock update'
                 ];
                 
                 if ($isDryRun) {
@@ -209,7 +226,7 @@ class SyncShopifyStock extends Command
                 $success = $shopifyService->updateInventoryLevel(
                     $inventoryItemId,
                     $locationId,
-                    $warehouseStock
+                    $targetShopifyStock
                 );
                 
                 if ($success) {
@@ -224,7 +241,7 @@ class SyncShopifyStock extends Command
                     $bar->setMessage((string)$synced);
                 } else {
                     $failed++;
-                    $errors[] = "Failed to update {$sku} (Shopify: {$shopifyStock} -> Warehouse: {$warehouseStock})";
+                    $errors[] = "Failed to update {$sku} (Shopify: {$shopifyStock} -> Target: {$targetShopifyStock})";
                 }
                 
             } catch (\Exception $e) {
@@ -248,7 +265,7 @@ class SyncShopifyStock extends Command
                 $this->newLine();
                 
                 // Create table headers
-                $headers = ['SKU', 'Product', 'Variant', 'Shopify', 'Warehouse', 'Diff'];
+                $headers = ['SKU', 'Product', 'Variant', 'Shopify', 'Warehouse', 'Target', 'Reason'];
                 $rows = [];
                 
                 foreach ($changes as $change) {
@@ -258,7 +275,8 @@ class SyncShopifyStock extends Command
                         strlen($change['variant']) > 30 ? substr($change['variant'], 0, 27) . '...' : $change['variant'],
                         $change['shopify_stock'],
                         $change['warehouse_stock'],
-                        ($change['difference'] > 0 ? '+' : '') . $change['difference']
+                        $change['target_stock'],
+                        $change['reason']
                     ];
                 }
                 
