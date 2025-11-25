@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Inventory Export')
+@section('page-title', 'Inventory Export')
 
 @section('content')
 <!-- Loading Overlay -->
@@ -16,6 +17,7 @@
     </div>
 </div>
 
+<div class="container-fluid">
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -342,4 +344,5 @@ window.addEventListener('load', function() {
     hideLoading();
 });
 </script>
+</div>
 @endsection

@@ -3,9 +3,10 @@
 @section('title', 'Order Details - ' . $order['name'])
 
 @section('content')
+<div class="container-fluid">
 <div class="row">
     <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-4 gap-3">
             <h1 class="h3 mb-0">
                 <i class="bi bi-receipt text-primary"></i> Order {{ $order['name'] }}
             </h1>
@@ -178,5 +179,6 @@
         </div>
         @endif
     </div>
+</div>
 </div>
 @endsection

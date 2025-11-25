@@ -1,20 +1,22 @@
 @extends('layouts.app')
 
 @section('title', 'Users')
+@section('page-title', 'User Management')
 
 @section('content')
-<div class="row">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="h3 mb-0">
-                <i class="bi bi-people text-primary"></i> Users
-            </h1>
-            @if($canManage)
-                <a href="{{ route('users.create') }}" class="btn btn-primary">
-                    <i class="bi bi-person-plus"></i> Add User
-                </a>
-            @endif
-        </div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-4 gap-3">
+                <h1 class="h3 mb-0">
+                    <i class="bi bi-people text-primary"></i> Users
+                </h1>
+                @if($canManage)
+                    <a href="{{ route('users.create') }}" class="btn btn-primary">
+                        <i class="bi bi-person-plus"></i> Add User
+                    </a>
+                @endif
+            </div>
 
         <div class="card">
             <div class="card-header">
@@ -106,6 +108,7 @@
                 {{ $users->links() }}
             </div>
             @endif
+        </div>
         </div>
     </div>
 </div>

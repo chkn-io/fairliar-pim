@@ -1,8 +1,10 @@
 @extends('layouts.app')
 
+@section('page-title', 'Stock Sync')
+
 @section('content')
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-4 gap-3">
         <h1>📦 Stock Sync</h1>
         <div>
             @if(count($syncData) > 0)
@@ -26,7 +28,7 @@
         <div class="card-body">
             <form method="GET" action="{{ route('stock-sync.index') }}" id="filterForm">
                 <div class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-12 col-md-4">
                         <label for="search" class="form-label">Search</label>
                         <input type="text" 
                                class="form-control" 
@@ -36,7 +38,7 @@
                                placeholder="Product name, SKU, barcode, variant ID...">
                     </div>
                     
-                    <div class="col-md-3">
+                    <div class="col-12 col-md-3">
                         <label for="location_id" class="form-label">Location</label>
                         <select class="form-select" id="location_id" name="location_id">
                             <option value="">All Locations (Total Stock)</option>
@@ -48,7 +50,7 @@
                         </select>
                     </div>
                     
-                    <div class="col-md-2">
+                    <div class="col-12 col-sm-6 col-md-2">
                         <label for="sort" class="form-label">Sort By</label>
                         <select class="form-select" id="sort" name="sort">
                             <option value="product_asc" {{ request('sort') == 'product_asc' ? 'selected' : '' }}>Product Name (A-Z)</option>
@@ -58,7 +60,7 @@
                         </select>
                     </div>
                     
-                    <div class="col-md-2">
+                    <div class="col-12 col-sm-6 col-md-2">
                         <label for="sync_status" class="form-label">Sync Status</label>
                         <select class="form-select" id="sync_status" name="sync_status">
                             <option value="" {{ request('sync_status') == '' ? 'selected' : '' }}>All Statuses</option>
@@ -68,13 +70,16 @@
                         </select>
                     </div>
                     
-                    <div class="col-md-1 d-flex align-items-end gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            🔍
-                        </button>
-                        <a href="{{ route('stock-sync.index') }}" class="btn btn-outline-secondary">
-                            🔄
-                        </a>
+                    <div class="col-md-12 col-lg-1">
+                        <label class="form-label d-none d-lg-block">&nbsp;</label>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill">
+                                🔍 Search
+                            </button>
+                            <a href="{{ route('stock-sync.index') }}" class="btn btn-outline-secondary flex-fill">
+                                🔄 Reset
+                            </a>
+                        </div>
                     </div>
                 </div>
             </form>

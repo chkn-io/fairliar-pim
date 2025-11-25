@@ -1,8 +1,10 @@
 @extends('layouts.app')
 
 @section('title', 'Create User')
+@section('page-title', 'Create User')
 
 @section('content')
+<div class="container-fluid">
 <div class="row">
     <div class="col-md-8 mx-auto">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -118,5 +120,6 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 @endsection

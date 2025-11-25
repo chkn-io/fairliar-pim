@@ -1,17 +1,19 @@
 @extends('layouts.app')
 
 @section('title', 'Orders')
+@section('page-title', 'Orders')
 
 @section('content')
-<div class="row">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="h3 mb-0">
-                <i class="bi bi-bag-check text-primary"></i> Shopify Orders
-            </h1>
-            <div class="d-flex gap-2">
-                <!-- Sorting Controls -->
-                <form method="GET" class="d-flex gap-2" id="sortForm">
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
+                <h1 class="h3 mb-0">
+                    <i class="bi bi-bag-check text-primary"></i> Shopify Orders
+                </h1>
+                <div class="d-flex flex-wrap gap-2">
+                    <!-- Sorting Controls -->
+                    <form method="GET" class="d-flex gap-2" id="sortForm">
                     @foreach(request()->except(['sort_by', 'sort_order']) as $key => $value)
                         <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                     @endforeach
@@ -90,13 +92,13 @@
                     <form method="GET" id="filterForm">
                         <!-- Quick Filters Row -->
                         <div class="row g-3 mb-3">
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-3">
                                 <label for="text_search" class="form-label">Order Search</label>
                                 <input type="text" class="form-control" id="text_search" name="text_search" 
                                        value="{{ $filters['text_search'] }}" 
                                        placeholder="Order number, customer...">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-12 col-sm-6 col-md-2">
                                 <label for="fulfillment_status" class="form-label">Fulfillment</label>
                                 <select name="fulfillment_status" class="form-select">
                                     <option value="">All Orders</option>
@@ -105,7 +107,7 @@
                                     <option value="fulfilled" {{ $filters['fulfillment_status'] == 'fulfilled' ? 'selected' : '' }}>Fulfilled</option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-12 col-sm-6 col-md-2">
                                 <label for="financial_status" class="form-label">Payment</label>
                                 <select name="financial_status" class="form-select">
                                     <option value="">All</option>
@@ -114,21 +116,21 @@
                                     <option value="refunded" {{ $filters['financial_status'] == 'refunded' ? 'selected' : '' }}>Refunded</option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-12 col-sm-6 col-md-2">
                                 <label for="date_from" class="form-label">From Date</label>
                                 <input type="date" class="form-control" id="date_from" name="date_from" 
                                        value="{{ $filters['date_from'] }}">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-12 col-sm-6 col-md-2">
                                 <label for="date_to" class="form-label">To Date</label>
                                 <input type="date" class="form-control" id="date_to" name="date_to" 
                                        value="{{ $filters['date_to'] }}">
                             </div>
-                            <div class="col-md-1">
-                                <label class="form-label">&nbsp;</label>
+                            <div class="col-12 col-md-1">
+                                <label class="form-label d-none d-md-block">&nbsp;</label>
                                 <div class="d-grid">
                                     <button type="submit" class="btn btn-primary">
-                                        <i class="bi bi-search"></i>
+                                        <i class="bi bi-search"></i> Search
                                     </button>
                                 </div>
                             </div>
@@ -138,7 +140,7 @@
                         <div class="collapse {{ $filters['custom_query'] ? 'show' : '' }}" id="advancedFilters">
                             <hr>
                             <div class="row g-3">
-                                <div class="col-md-10">
+                                <div class="col-12 col-md-10">
                                     <label for="custom_query" class="form-label">Custom GraphQL Query</label>
                                     <input type="text" class="form-control" id="custom_query" name="custom_query" 
                                            value="{{ $filters['custom_query'] }}" 
@@ -147,8 +149,8 @@
                                         Examples: <code>tag:urgent</code>, <code>customer.email:john@example.com</code>, <code>created_at:>2024-01-01</code>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">&nbsp;</label>
+                                <div class="col-12 col-md-2">
+                                    <label class="form-label d-none d-md-block">&nbsp;</label>
                                     <div class="d-grid">
                                         <a href="{{ route('orders.index') }}" class="btn btn-outline-secondary">
                                             <i class="bi bi-arrow-clockwise"></i> Reset
@@ -169,16 +171,16 @@
             <!-- Orders Table -->
             <div class="card">
                 <div class="card-header">
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2\">
                         <h5 class="mb-0">Orders ({{ count($orders) }} shown)</h5>
-                        <div class="d-flex gap-2 align-items-center">
-                            <small class="text-muted">Query: {{ $currentQuery }}</small>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <small class="text-muted d-none d-md-inline">Query: {{ $currentQuery }}</small>
                             <form method="GET" action="{{ route('orders.export') }}" style="display: inline;">
                                 @foreach(request()->query() as $key => $value)
                                     <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                                 @endforeach
                                 <button type="submit" class="btn btn-success btn-sm">
-                                    <i class="bi bi-download"></i> Export CSV
+                                    <i class="bi bi-download"></i> Export
                                 </button>
                             </form>
                         </div>
@@ -466,4 +468,7 @@ function showAllItems(orderHash) {
     modal.show();
 }
 </script>
+        </div>
+    </div>
+</div>
 @endsection

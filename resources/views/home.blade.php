@@ -1,8 +1,10 @@
 @extends('layouts.app')
 
 @section('title', 'Dashboard')
+@section('page-title', 'Dashboard')
 
 @section('content')
+<div class="container-fluid">
 <div class="row">
     <div class="col-12">
         <!-- Welcome Section -->
@@ -127,5 +129,6 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 @endsection
