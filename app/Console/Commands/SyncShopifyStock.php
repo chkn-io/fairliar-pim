@@ -153,8 +153,20 @@ class SyncShopifyStock extends Command
                     continue;
                 }
                 
-                // Get current Shopify stock
-                $shopifyStock = $variant['total_inventory'] ?? 0;
+                // Get current Shopify stock for the specific location
+                $shopifyStock = 0;
+                if (isset($variant['inventory_levels']) && is_array($variant['inventory_levels'])) {
+                    foreach ($variant['inventory_levels'] as $level) {
+                        if ($level['location_id'] === $locationId) {
+                            $shopifyStock = $level['available'];
+                            break;
+                        }
+                    }
+                } else {
+                    // Fallback to total inventory if inventory_levels not available
+                    $shopifyStock = $variant['total_inventory'] ?? 0;
+                }
+                
                 $warehouseStock = $warehouseData['stock'];
                 
                 // Skip if stocks match
