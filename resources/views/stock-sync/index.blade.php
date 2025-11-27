@@ -28,7 +28,7 @@
         <div class="card-body">
             <form method="GET" action="{{ route('stock-sync.index') }}" id="filterForm">
                 <div class="row g-3">
-                    <div class="col-12 col-md-4">
+                    <div class="col-12 col-md-3">
                         <label for="search" class="form-label">Search</label>
                         <input type="text" 
                                class="form-control" 
@@ -70,14 +70,14 @@
                         </select>
                     </div>
                     
-                    <div class="col-md-12 col-lg-1">
+                    <div class="col-md-12 col-lg-2">
                         <label class="form-label d-none d-lg-block">&nbsp;</label>
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary flex-fill">
-                                🔍 Search
+                            <button type="submit" class="btn btn-primary flex-fill p-0">
+                                 Search
                             </button>
                             <a href="{{ route('stock-sync.index') }}" class="btn btn-outline-secondary flex-fill">
-                                🔄 Reset
+                                Reset
                             </a>
                         </div>
                     </div>
@@ -91,15 +91,37 @@
     <!-- Results Table -->
     @if(count($syncData) > 0)
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Stock Comparison @if($search)(Search Results)@else(Page {{ $currentPage }}@if($lastPage > $currentPage) of {{ $lastPage }}+@endif)@endif</span>
-            <span class="badge bg-secondary">{{ count($syncData) }} variants on this page</span>
+        <div class="card-header">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span>Stock Comparison @if($search)(Search Results)@else(Page {{ $currentPage }}@if($lastPage > $currentPage) of {{ $lastPage }}+@endif)@endif</span>
+                    <span class="badge bg-secondary">{{ count($syncData) }} variants on this page</span>
+                </div>
+                <!-- Bulk Actions Toolbar -->
+                <div id="bulkActionsToolbar" class="d-none">
+                    <div class="d-flex gap-2 align-items-center">
+                        <span class="text-muted small" id="selectedCount">0 selected</span>
+                        <button class="btn btn-sm btn-success" onclick="bulkTogglePimSync(false)" title="Include selected variants in PIM sync">
+                            <i class="bi bi-check-circle"></i> Include
+                        </button>
+                        <button class="btn btn-sm btn-warning" onclick="bulkTogglePimSync(true)" title="Exclude selected variants from PIM sync">
+                            <i class="bi bi-x-circle"></i> Exclude
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearAllSelections()" title="Clear selection">
+                            <i class="bi bi-x"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
                     <thead class="table-light sticky-top">
                         <tr>
+                            <th style="width: 40px;">
+                                <input type="checkbox" class="form-check-input" id="selectAll" title="Select all variants on this page">
+                            </th>
                             <th>Product</th>
                             <th>Variant</th>
                             <th>SKU</th>
@@ -137,6 +159,17 @@
                             $storeDomain = config('shopify.store_domain');
                         @endphp
                         <tr>
+                            <td>
+                                <input type="checkbox" 
+                                       class="form-check-input variant-checkbox" 
+                                       data-variant-gid="{{ $item['variant_gid'] }}" 
+                                       data-product-gid="{{ $item['product_gid'] }}" 
+                                       data-product-title="{{ addslashes($item['product_title']) }}" 
+                                       data-variant-title="{{ addslashes($item['variant_title']) }}"
+                                       data-variant-id="{{ $item['variant_id'] }}"
+                                       data-inventory-item-id="{{ $item['inventory_item_id'] }}"
+                                       data-shopify-stock="{{ $item['shopify_stock'] }}">
+                            </td>
                             <td>
                                 <div class="fw-bold">{{ $item['product_title'] }}</div>
                                 <small class="text-muted">ID: {{ $item['variant_id'] }}</small>
@@ -333,6 +366,264 @@
 </div>
 
 <script>
+// Bulk Selection Management
+function updateBulkActionsToolbar() {
+    const checkboxes = document.querySelectorAll('.variant-checkbox:checked');
+    const toolbar = document.getElementById('bulkActionsToolbar');
+    const countEl = document.getElementById('selectedCount');
+    
+    if (checkboxes.length > 0) {
+        toolbar.classList.remove('d-none');
+        countEl.textContent = `${checkboxes.length} selected`;
+    } else {
+        toolbar.classList.add('d-none');
+    }
+}
+
+function clearAllSelections() {
+    document.querySelectorAll('.variant-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('selectAll').checked = false;
+    updateBulkActionsToolbar();
+}
+
+// Select All functionality
+document.getElementById('selectAll')?.addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.variant-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+    updateBulkActionsToolbar();
+});
+
+// Individual checkbox change
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('variant-checkbox')) {
+        updateBulkActionsToolbar();
+        
+        // Update "select all" checkbox state
+        const allCheckboxes = document.querySelectorAll('.variant-checkbox');
+        const checkedCheckboxes = document.querySelectorAll('.variant-checkbox:checked');
+        const selectAllCheckbox = document.getElementById('selectAll');
+        
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = allCheckboxes.length === checkedCheckboxes.length && allCheckboxes.length > 0;
+            selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < allCheckboxes.length;
+        }
+    }
+});
+
+function bulkTogglePimSync(exclude) {
+    const checkboxes = document.querySelectorAll('.variant-checkbox:checked');
+    
+    if (checkboxes.length === 0) {
+        Swal.fire('No Selection', 'Please select at least one variant.', 'warning');
+        return;
+    }
+    
+    const action = exclude ? 'exclude from' : 'include in';
+    const actionVerb = exclude ? 'Exclude' : 'Include';
+    const count = checkboxes.length;
+    
+    Swal.fire({
+        title: `${actionVerb} ${count} Variant${count > 1 ? 's' : ''}?`,
+        html: `Are you sure you want to <strong>${action}</strong> PIM sync for <strong>${count}</strong> selected variant${count > 1 ? 's' : ''}?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: exclude ? '#ffc107' : '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: `Yes, ${actionVerb} All`,
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            pauseWarehouseRequests();
+            showLoading(`Updating ${count} variants...`, 'Please wait...');
+            
+            const variants = Array.from(checkboxes).map(cb => ({
+                variant_gid: cb.dataset.variantGid,
+                product_gid: cb.dataset.productGid,
+                product_title: cb.dataset.productTitle,
+                variant_title: cb.dataset.variantTitle
+            }));
+            
+            // Process variants in batches
+            processBulkToggle(variants, exclude, 0);
+        }
+    });
+}
+
+function processBulkToggle(variants, exclude, index) {
+    if (index >= variants.length) {
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
+        Swal.fire({
+            title: 'Success!',
+            text: `Successfully updated ${variants.length} variant${variants.length > 1 ? 's' : ''}.`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false
+        });
+        
+        // Clear selections and update toolbar
+        clearAllSelections();
+        resumeWarehouseRequests();
+        return;
+    }
+    
+    const variant = variants[index];
+    const progress = `${index + 1} of ${variants.length}`;
+    document.getElementById('loadingSubtext').textContent = `Processing variant ${progress}...`;
+    
+    fetch('{{ route('stock-sync.toggle-pim-sync') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            variant_gid: variant.variant_gid,
+            product_gid: variant.product_gid,
+            exclude: exclude
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update the row for this variant
+            updateRowAfterBulkToggle(variant.variant_gid, data.pim_sync, variant.product_gid, variant.product_title);
+            
+            // Continue with next variant
+            setTimeout(() => processBulkToggle(variants, exclude, index + 1), 200);
+        } else {
+            throw new Error(data.message || 'Failed to update variant');
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingOverlay').style.display = 'none';
+        Swal.fire({
+            title: 'Error',
+            text: `Failed to update variant: ${error.message}. ${index} of ${variants.length} variants were updated.`,
+            icon: 'error',
+            confirmButtonText: 'OK'
+        });
+        clearAllSelections();
+        resumeWarehouseRequests();
+    });
+}
+
+function updateRowAfterBulkToggle(variantGid, pimSync, productGid, productTitle) {
+    // Find the checkbox for this variant
+    const checkbox = document.querySelector(`.variant-checkbox[data-variant-gid="${variantGid}"]`);
+    if (!checkbox) return;
+    
+    const row = checkbox.closest('tr');
+    if (!row) return;
+    
+    // Get data from checkbox
+    const variantId = checkbox.dataset.variantId;
+    const inventoryItemId = checkbox.dataset.inventoryItemId;
+    const variantTitle = checkbox.dataset.variantTitle;
+    const shopifyStock = checkbox.dataset.shopifyStock;
+    
+    // Update status badge (column index 6 because of checkbox column)
+    const statusCell = row.querySelector('td:nth-child(6)');
+    if (statusCell) {
+        if (pimSync === 'true') {
+            statusCell.innerHTML = '<span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>';
+        } else if (pimSync === 'false') {
+            statusCell.innerHTML = '<span class="badge bg-warning text-dark" title="This variant is excluded from PIM sync">✗ Excluded</span>';
+        } else {
+            statusCell.innerHTML = '<span class="badge bg-secondary" title="Sync status not set for this variant">○ Unset</span>';
+        }
+    }
+    
+    // Update action buttons (last column)
+    const actionsCell = row.querySelector('td:last-child');
+    if (actionsCell) {
+        const viewButton = actionsCell.querySelector('a[target="_blank"]');
+        const oldSyncButton = actionsCell.querySelector('.sync-stock-btn');
+        
+        // Rebuild buttons container
+        let newButtonsHtml = '<div class="d-flex gap-1 justify-content-center flex-wrap">';
+        
+        // Keep View button
+        if (viewButton) {
+            newButtonsHtml += viewButton.outerHTML;
+        }
+        
+        // Add appropriate Include/Exclude buttons based on new status
+        const escapedTitle = productTitle.replace(/'/g, "\\'");
+        const escapedVariantTitle = variantTitle.replace(/'/g, "\\'");
+        
+        if (pimSync === 'true') {
+            newButtonsHtml += `<button onclick="togglePimSync('${variantGid}', '${productGid}', '${escapedTitle}', true)" 
+                    class="btn btn-sm btn-warning"
+                    title="Exclude this variant from PIM sync"
+                    style="min-width: 80px;">
+                <i class="bi bi-x-circle"></i> Exclude
+            </button>`;
+            
+            // Add Sync button if location is selected
+            const selectedLocation = '{{ $selectedLocation }}';
+            if (selectedLocation) {
+                // Get warehouse stock from the row if available
+                const warehouseStockEl = row.querySelector(`.warehouse-stock[data-variant-id="${variantId}"]`);
+                const warehouseStock = warehouseStockEl ? warehouseStockEl.dataset.warehouseStock : null;
+                
+                newButtonsHtml += `<button class="btn btn-sm btn-info sync-stock-btn" 
+                        data-variant-id="${variantId}"
+                        data-inventory-item-id="${inventoryItemId}"
+                        data-location-id="${selectedLocation}"
+                        data-product-title="${escapedTitle}"
+                        data-variant-title="${escapedVariantTitle}"
+                        data-shopify-stock="${shopifyStock}"
+                        ${warehouseStock ? `data-warehouse-stock="${warehouseStock}"` : ''}
+                        title="Sync stock from warehouse to Shopify"
+                        style="min-width: 80px;"
+                        ${!warehouseStock || warehouseStock === shopifyStock ? 'disabled' : ''}>
+                    <i class="bi bi-arrow-repeat"></i> Sync
+                </button>`;
+                
+                // Set up onclick handler if warehouse stock is available
+                if (warehouseStock && warehouseStock !== shopifyStock) {
+                    setTimeout(() => {
+                        const syncBtn = row.querySelector('.sync-stock-btn');
+                        if (syncBtn) {
+                            syncBtn.onclick = function() {
+                                syncStock(variantId, inventoryItemId, selectedLocation, warehouseStock, escapedTitle, escapedVariantTitle);
+                            };
+                        }
+                    }, 0);
+                }
+            }
+        } else if (pimSync === 'false') {
+            newButtonsHtml += `<button onclick="togglePimSync('${variantGid}', '${productGid}', '${escapedTitle}', false)" 
+                    class="btn btn-sm btn-success"
+                    title="Include this variant in PIM sync"
+                    style="min-width: 80px;">
+                <i class="bi bi-check-circle"></i> Include
+            </button>`;
+        } else {
+            // Unset state - show both buttons
+            newButtonsHtml += `<button onclick="togglePimSync('${variantGid}', '${productGid}', '${escapedTitle}', false)" 
+                    class="btn btn-sm btn-success"
+                    title="Include this variant in PIM sync"
+                    style="min-width: 80px;">
+                <i class="bi bi-check-circle"></i> Include
+            </button>
+            <button onclick="togglePimSync('${variantGid}', '${productGid}', '${escapedTitle}', true)" 
+                    class="btn btn-sm btn-outline-warning"
+                    title="Exclude this variant from PIM sync"
+                    style="min-width: 80px;">
+                <i class="bi bi-x-circle"></i> Exclude
+            </button>`;
+        }
+        
+        newButtonsHtml += '</div>';
+        actionsCell.innerHTML = newButtonsHtml;
+    }
+    
+    // Uncheck the checkbox
+    checkbox.checked = false;
+}
+
 function showLoading(message = 'Loading stock data...', subtext = 'This may take a moment as we fetch data from Shopify.') {
     document.getElementById('loadingMessage').textContent = message;
     document.getElementById('loadingSubtext').textContent = subtext;
