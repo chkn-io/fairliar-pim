@@ -210,6 +210,100 @@ class WarehouseService
     }
 
     /**
+     * Get warehouse stock for multiple SKUs in one request
+     * Uses the 'in' operator to fetch multiple variants at once
+     * 
+     * @param array $skus Array of SKUs/barcodes to search for
+     * @return array Associative array with SKU as key and stock data as value
+     */
+    public function getStockBySkuBatch($skus)
+    {
+        if (empty($skus) || !is_array($skus)) {
+            return [];
+        }
+
+        // Filter out empty SKUs
+        $skus = array_filter($skus, function($sku) {
+            return !empty($sku);
+        });
+
+        if (empty($skus)) {
+            return [];
+        }
+
+        try {
+            // Join SKUs with pipe delimiter for 'in' operator
+            $skuList = implode('|', array_map('urlencode', $skus));
+            $url = $this->apiUrl . '?f[]=barcode1,in,' . $skuList . ',and&c[]=optionHasCodeByShop&per_page=100';
+            
+            $response = $this->client->request('GET', $url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->apiToken,
+                    'Accept' => 'application/json',
+                ]
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            
+            Log::info('Warehouse API Batch Response:', [
+                'requested_skus' => count($skus),
+                'returned_variants' => count($data['data'] ?? []),
+                'meta' => $data['meta'] ?? null
+            ]);
+            
+            $results = [];
+            
+            if (isset($data['data']) && is_array($data['data'])) {
+                foreach ($data['data'] as $variant) {
+                    $barcode = $variant['barcode1'] ?? '';
+                    
+                    if (empty($barcode)) {
+                        continue;
+                    }
+                    
+                    // Extract Shopify variant ID from option_has_code_by_shop
+                    $shopifyVariantId = null;
+                    if (isset($variant['option_has_code_by_shop'])) {
+                        foreach ($variant['option_has_code_by_shop'] as $shopCode) {
+                            if ($shopCode['shop_id'] == '28') {
+                                $shopifyVariantId = $shopCode['option_code'];
+                                break;
+                            }
+                        }
+                    }
+                    
+                    $results[$barcode] = [
+                        'warehouse_id' => $variant['id'],
+                        'shopify_variant_id' => $shopifyVariantId,
+                        'variant_name' => $variant['variant_name'] ?? '',
+                        'stock' => (int)($variant['stock'] ?? 0),
+                        'barcode1' => $barcode,
+                        'sku' => $barcode,
+                        'cost_price' => $variant['cost_price'] ?? 0,
+                        'selling_price' => $variant['selling_price'] ?? 0
+                    ];
+                }
+            }
+
+            return $results;
+
+        } catch (RequestException $e) {
+            Log::error('Warehouse API batch SKU search failed:', [
+                'sku_count' => count($skus),
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+            ]);
+            return [];
+        } catch (\Exception $e) {
+            Log::error('Warehouse API batch request error:', [
+                'sku_count' => count($skus),
+                'message' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
      * Get warehouse stock by SKU (barcode1)
      * Uses the filter endpoint with barcode1 search
      * 

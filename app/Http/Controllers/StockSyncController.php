@@ -272,6 +272,30 @@ class StockSyncController extends Controller
     }
 
     /**
+     * Get warehouse stock for multiple SKUs in batch (AJAX endpoint)
+     * Fetches stock from warehouse API for multiple SKUs at once
+     */
+    public function getWarehouseStockBatch(Request $request)
+    {
+        $skus = $request->input('skus', []);
+        
+        if (empty($skus) || !is_array($skus)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No SKUs provided'
+            ]);
+        }
+        
+        $warehouseData = $this->warehouseService->getStockBySkuBatch($skus);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $warehouseData,
+            'count' => count($warehouseData)
+        ]);
+    }
+
+    /**
      * Get warehouse stock by SKU (AJAX endpoint)
      * Fetches stock from warehouse API using SKU/barcode search
      */

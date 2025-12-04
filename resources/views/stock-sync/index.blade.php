@@ -943,23 +943,76 @@ function fetchWarehouseStocks() {
     
     if (stockElements.length === 0) return;
     
-    // Clear any existing queue
-    warehouseRequestQueue = [];
+    // Collect all SKUs and create lookup map
+    const skus = [];
+    const skuMap = new Map(); // Map SKU to array of elements
     
-    // Build queue of requests
-    stockElements.forEach((el, index) => {
-        warehouseRequestQueue.push({
-            element: el,
-            sku: el.dataset.sku,
-            variantId: el.dataset.variantId,
-            index: index
-        });
+    stockElements.forEach((el) => {
+        const sku = el.dataset.sku;
+        if (sku) {
+            skus.push(sku);
+            if (!skuMap.has(sku)) {
+                skuMap.set(sku, []);
+            }
+            skuMap.get(sku).push({
+                element: el,
+                variantId: el.dataset.variantId
+            });
+        } else {
+            el.innerHTML = '<span class="badge bg-secondary">No SKU</span>';
+        }
     });
     
-    console.log(`📦 Queued ${warehouseRequestQueue.length} warehouse stock requests`);
+    if (skus.length === 0) return;
     
-    // Start processing queue
-    processWarehouseQueue();
+    console.log(`📦 Fetching warehouse stock for ${skus.length} variants in batch...`);
+    
+    // Fetch all stocks in one request
+    fetch('{{ route('stock-sync.get-warehouse-stock-batch') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ skus: skus })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`✅ Received warehouse stock for ${data.count} variants`);
+            
+            // Update all elements with the fetched data
+            skuMap.forEach((items, sku) => {
+                const stockData = data.data[sku];
+                
+                items.forEach(({ element, variantId }) => {
+                    if (stockData) {
+                        const stock = stockData.stock;
+                        element.dataset.warehouseStock = stock;
+                        element.innerHTML = `<span class="badge bg-info">${stock}</span>`;
+                        updateDifference(variantId, stock);
+                        updateSyncButton(variantId, stock);
+                    } else {
+                        element.innerHTML = '<span class="badge bg-secondary">Not Found</span>';
+                        updateDifference(variantId, null);
+                    }
+                });
+            });
+        } else {
+            console.error('Batch warehouse stock fetch failed:', data.message);
+            // Fall back to showing error on all elements
+            stockElements.forEach(el => {
+                el.innerHTML = '<span class="badge bg-danger">Error</span>';
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Batch warehouse stock fetch error:', error);
+        // Fall back to showing error on all elements
+        stockElements.forEach(el => {
+            el.innerHTML = '<span class="badge bg-danger">Error</span>';
+        });
+    });
 }
 
 function processWarehouseQueue() {
