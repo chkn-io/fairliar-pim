@@ -106,6 +106,35 @@ class SyncShopifyStock extends Command
         $this->info("Found {$totalVariants} variants to sync");
         $this->newLine();
         
+        // Collect all SKUs for batch fetching
+        $this->info('Fetching warehouse stock for all variants...');
+        $allSkus = array_filter(array_map(function($variant) {
+            return $variant['sku'] ?? null;
+        }, $allVariants));
+        
+        // Fetch warehouse stock in batches of 50
+        $warehouseStockMap = [];
+        $skuBatches = array_chunk($allSkus, 50);
+        $batchCount = count($skuBatches);
+        
+        $this->info("Fetching warehouse stock in {$batchCount} batches of 50...");
+        
+        foreach ($skuBatches as $index => $skuBatch) {
+            $batchNumber = $index + 1;
+            $this->info("Fetching batch {$batchNumber}/{$batchCount}...");
+            
+            $batchResults = $warehouseService->getStockBySkuBatch($skuBatch);
+            $warehouseStockMap = array_merge($warehouseStockMap, $batchResults);
+            
+            // Small delay to avoid overwhelming the API
+            if ($batchNumber < $batchCount) {
+                usleep(200000); // 200ms delay between batches
+            }
+        }
+        
+        $this->info("Fetched warehouse stock for " . count($warehouseStockMap) . " variants");
+        $this->newLine();
+        
         // Progress bar
         $bar = $this->output->createProgressBar($totalVariants);
         $bar->setFormat(' %current%/%max% [%bar%] %percent:3s%% | Success: %message%');
@@ -132,8 +161,8 @@ class SyncShopifyStock extends Command
                     continue;
                 }
                 
-                // Fetch warehouse stock from API using SKU
-                $warehouseData = $warehouseService->getStockBySku($sku);
+                // Get warehouse stock from the pre-fetched map
+                $warehouseData = $warehouseStockMap[$sku] ?? null;
                 
                 if (!$warehouseData) {
                     $productTitle = $variant['product_title'] ?? 'N/A';
