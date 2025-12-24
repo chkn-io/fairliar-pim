@@ -144,9 +144,9 @@
                                     <label for="custom_query" class="form-label">Custom GraphQL Query</label>
                                     <input type="text" class="form-control" id="custom_query" name="custom_query" 
                                            value="{{ $filters['custom_query'] }}" 
-                                           placeholder="e.g., fulfillment_status:unfulfilled AND created_at:>2024-01-01">
+                                           placeholder="e.g., fulfillment_status:unfulfilled AND created_at:>2025-10-01">
                                     <div class="form-text">
-                                        Examples: <code>tag:urgent</code>, <code>customer.email:john@example.com</code>, <code>created_at:>2024-01-01</code>
+                                        Examples: <code>tag:urgent</code>, <code>customer.email:john@example.com</code>, <code>created_at:>2025-10-01</code>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-2">

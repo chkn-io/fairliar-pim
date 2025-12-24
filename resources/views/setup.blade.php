@@ -18,7 +18,7 @@
                 <p>Update your <code>.env</code> file with your Shopify store information:</p>
                 <pre class="bg-light p-3 rounded"><code>SHOPIFY_API_KEY=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
 SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
-SHOPIFY_API_VERSION=2024-01</code></pre>
+SHOPIFY_API_VERSION=2025-10</code></pre>
 
                 <h5>2. Install Dependencies</h5>
                 <p>Make sure you have installed all required PHP packages:</p>
@@ -37,7 +37,7 @@ SHOPIFY_API_VERSION=2024-01</code></pre>
                 <ul>
                     <li><code>fulfillment_status:unfulfilled</code> - Show unfulfilled orders</li>
                     <li><code>financial_status:paid</code> - Show paid orders</li>
-                    <li><code>created_at:>2024-01-01</code> - Orders created after a specific date</li>
+                    <li><code>created_at:>2025-10-01</code> - Orders created after a specific date</li>
                     <li><code>tag:urgent</code> - Orders with specific tags</li>
                 </ul>
 

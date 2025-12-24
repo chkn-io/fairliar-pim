@@ -25,7 +25,7 @@ A Laravel application that displays Shopify orders in a paginated table using Gr
    ```env
    SHOPIFY_API_KEY=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
    SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
-   SHOPIFY_API_VERSION=2024-01
+   SHOPIFY_API_VERSION=2025-10
    ```
 
 3. **Test Your Connection**
@@ -53,7 +53,7 @@ Use Shopify's query syntax to filter orders:
 
 - `fulfillment_status:unfulfilled` - Show unfulfilled orders
 - `financial_status:paid` - Show paid orders  
-- `created_at:>2024-01-01` - Orders after specific date
+- `created_at:>2025-10-01` - Orders after specific date
 - `tag:urgent` - Orders with specific tags
 - `customer.email:john@example.com` - Orders by customer email
 
@@ -82,7 +82,7 @@ php artisan serve
 ### Environment Variables
 - `SHOPIFY_API_KEY` - Your Shopify Admin API access token
 - `SHOPIFY_STORE_DOMAIN` - Your store domain (e.g., `your-store.myshopify.com`)
-- `SHOPIFY_API_VERSION` - API version (default: `2024-01`)
+- `SHOPIFY_API_VERSION` - API version (default: `2025-10`)
 
 ## License
 
