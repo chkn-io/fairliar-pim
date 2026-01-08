@@ -551,6 +551,12 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('products.*') ? 'active' : '' }}" href="{{ route('products.index') }}">
+                        <i class="bi bi-bag"></i>
+                        <span>Products</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('inventory.*') ? 'active' : '' }}" href="{{ route('inventory.index') }}">
                         <i class="bi bi-boxes"></i>
                         <span>Inventory</span>

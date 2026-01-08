@@ -5,6 +5,7 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\ProductsController;
 
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -35,6 +36,10 @@ Route::middleware('auth')->group(function () {
     // Inventory routes
     Route::get('/inventory', [InventoryController::class, 'index'])->name('inventory.index');
     Route::get('/inventory/export', [InventoryController::class, 'export'])->name('inventory.export');
+
+    // Products routes
+    Route::get('/products', [ProductsController::class, 'index'])->name('products.index');
+    Route::get('/products/export', [ProductsController::class, 'export'])->name('products.export');
 
     // Stock Sync routes
     

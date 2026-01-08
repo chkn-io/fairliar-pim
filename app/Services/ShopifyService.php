@@ -523,6 +523,283 @@ class ShopifyService
         }
     }
 
+    private function escapeShopifyQueryValue($value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        // Escape backslashes and double quotes for embedding inside a GraphQL string literal
+        return str_replace(["\\", '"'], ["\\\\", '\\"'], $value);
+    }
+
+    private function buildProductsSearchQuery(array $filters): string
+    {
+        $parts = [];
+
+        $tag = $this->escapeShopifyQueryValue($filters['tag'] ?? '');
+        if ($tag !== '') {
+            // Quote tag to support spaces/special chars
+            $parts[] = 'tag:"' . $tag . '"';
+        }
+
+        $sku = $this->escapeShopifyQueryValue($filters['sku'] ?? '');
+        if ($sku !== '') {
+            // Match any variant SKU containing the term
+            $parts[] = 'sku:*' . $sku . '*';
+        }
+
+        $name = $this->escapeShopifyQueryValue($filters['name'] ?? '');
+        if ($name !== '') {
+            $parts[] = 'title:*' . $name . '*';
+        }
+
+        $status = strtolower(trim((string) ($filters['status'] ?? '')));
+        if ($status !== '' && $status !== 'all') {
+            $parts[] = 'status:' . $status;
+        }
+
+        return implode(' AND ', $parts);
+    }
+
+    private function buildProductsWithVariantsQuery(int $first = 20, ?string $after = null, string $queryString = '', bool $includeCategory = true, bool $includeOnlineStoreUrl = true): string
+    {
+        $afterClause = $after ? ', after: "' . $after . '"' : '';
+        $queryClause = $queryString !== '' ? ', query: "' . $queryString . '"' : '';
+
+        $onlineStoreUrlField = $includeOnlineStoreUrl ? "\n                        onlineStoreUrl" : '';
+        $categoryField = $includeCategory ? "\n                        category {\n                            fullName\n                        }" : '';
+
+        return '{
+            products(first: ' . $first . $queryClause . $afterClause . ') {
+                edges {
+                    cursor
+                    node {
+                        id
+                        handle
+                        title
+                        vendor
+                        productType
+                        tags
+                        updatedAt
+                        status' . $onlineStoreUrlField . $categoryField . '
+                        variants(first: 100) {
+                            edges {
+                                node {
+                                    id
+                                    sku
+                                    barcode
+                                    price
+                                }
+                            }
+                        }
+                    }
+                }
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+            }
+        }';
+    }
+
+    private function formatProductsWithVariantsResponse(array $data): array
+    {
+        $products = [];
+        $edges = $data['data']['products']['edges'] ?? [];
+
+        foreach ($edges as $edge) {
+            $product = $edge['node'] ?? [];
+            if (empty($product)) {
+                continue;
+            }
+
+            $productIdNumeric = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $product['id'] ?? '');
+            $handle = $product['handle'] ?? '';
+
+            $tags = $product['tags'] ?? [];
+            $tagsString = is_array($tags) ? implode(', ', $tags) : (string) $tags;
+
+            $onlineStoreUrl = $product['onlineStoreUrl'] ?? '';
+            if (!$onlineStoreUrl && $handle) {
+                $onlineStoreUrl = $this->storeDomain ? ('https://' . $this->storeDomain . '/products/' . $handle) : '';
+            }
+
+            $category = '';
+            if (isset($product['category']['fullName'])) {
+                $category = (string) $product['category']['fullName'];
+            }
+
+            $variants = [];
+            foreach (($product['variants']['edges'] ?? []) as $variantEdge) {
+                $variant = $variantEdge['node'] ?? [];
+                if (empty($variant)) {
+                    continue;
+                }
+
+                $variantIdNumeric = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $variant['id'] ?? '');
+
+                $variants[] = [
+                    'variant_id' => $variantIdNumeric,
+                    'sku' => $variant['sku'] ?? '',
+                    'barcode' => $variant['barcode'] ?? '',
+                    'price' => $variant['price'] ?? '',
+                ];
+            }
+
+            $products[] = [
+                'product_id' => $productIdNumeric,
+                'handle' => $handle,
+                'title' => $product['title'] ?? '',
+                'vendor' => $product['vendor'] ?? '',
+                'type' => $product['productType'] ?? '',
+                'tags' => $tagsString,
+                'updated_at' => $product['updatedAt'] ?? '',
+                'status' => $product['status'] ?? '',
+                'url' => $onlineStoreUrl,
+                'category' => $category,
+                'variants' => $variants,
+            ];
+        }
+
+        return $products;
+    }
+
+    /**
+     * Fetch a single cursor-paginated batch of products with variants.
+     */
+    public function getProductsWithVariantsBatch(array $filters, int $first = 20, ?string $after = null): array
+    {
+        $queryString = $this->buildProductsSearchQuery($filters);
+
+        $includeCategory = true;
+        $includeOnlineStoreUrl = true;
+
+        $graphqlQuery = $this->buildProductsWithVariantsQuery($first, $after, $queryString, $includeCategory, $includeOnlineStoreUrl);
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $graphqlQuery,
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            // If schema doesn't support optional fields, retry once without them.
+            if (isset($data['errors']) && is_array($data['errors'])) {
+                $messages = array_map(function ($e) {
+                    return is_array($e) ? ($e['message'] ?? json_encode($e)) : (string) $e;
+                }, $data['errors']);
+                $combined = implode(' | ', $messages);
+
+                $unknownCategory = stripos($combined, "Field 'category'") !== false;
+                $unknownOnlineStoreUrl = stripos($combined, "Field 'onlineStoreUrl'") !== false;
+
+                if ($unknownCategory || $unknownOnlineStoreUrl) {
+                    $includeCategory = !$unknownCategory;
+                    $includeOnlineStoreUrl = !$unknownOnlineStoreUrl;
+                    $graphqlQuery = $this->buildProductsWithVariantsQuery($first, $after, $queryString, $includeCategory, $includeOnlineStoreUrl);
+
+                    $response = $this->client->post($this->graphqlEndpoint, [
+                        'headers' => [
+                            'Content-Type' => 'application/json',
+                            'X-Shopify-Access-Token' => $this->apiKey,
+                        ],
+                        'json' => [
+                            'query' => $graphqlQuery,
+                        ],
+                    ]);
+
+                    $data = json_decode($response->getBody()->getContents(), true);
+                }
+            }
+
+            if (isset($data['errors'])) {
+                Log::error('Shopify GraphQL products errors:', $data['errors']);
+
+                return [
+                    'products' => [],
+                    'pageInfo' => [],
+                    'errors' => $data['errors'],
+                ];
+            }
+
+            $pageInfo = $data['data']['products']['pageInfo'] ?? [];
+
+            return [
+                'products' => $this->formatProductsWithVariantsResponse($data),
+                'pageInfo' => $pageInfo,
+                'errors' => [],
+            ];
+        } catch (RequestException $e) {
+            Log::error('Shopify Products API request failed:', [
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+            ]);
+
+            return [
+                'products' => [],
+                'pageInfo' => [],
+                'errors' => ['API request failed: ' . $e->getMessage()],
+            ];
+        }
+    }
+
+    /**
+     * Fetch a specific page of products by walking cursors sequentially.
+     */
+    public function getProductsWithVariantsPage(array $filters, int $first = 20, int $page = 1): array
+    {
+        $page = max(1, $page);
+        $currentPage = 1;
+        $after = null;
+
+        $lastBatch = [
+            'products' => [],
+            'pageInfo' => [],
+            'errors' => [],
+        ];
+
+        while ($currentPage <= $page) {
+            $lastBatch = $this->getProductsWithVariantsBatch($filters, $first, $after);
+            if (!empty($lastBatch['errors'])) {
+                break;
+            }
+
+            $pageInfo = $lastBatch['pageInfo'] ?? [];
+            $hasNextPage = (bool) ($pageInfo['hasNextPage'] ?? false);
+            $after = $pageInfo['endCursor'] ?? null;
+
+            if ($currentPage === $page) {
+                return [
+                    'products' => $lastBatch['products'] ?? [],
+                    'has_next_page' => $hasNextPage,
+                    'current_page' => $page,
+                    'errors' => $lastBatch['errors'] ?? [],
+                ];
+            }
+
+            $currentPage++;
+
+            if (!$hasNextPage) {
+                break;
+            }
+        }
+
+        return [
+            'products' => [],
+            'has_next_page' => false,
+            'current_page' => $page,
+            'errors' => $lastBatch['errors'] ?? ['Unable to fetch requested page'],
+        ];
+    }
+
     /**
      * Build inventory GraphQL query
      */
