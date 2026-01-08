@@ -563,10 +563,18 @@ class ShopifyService
         return implode(' AND ', $parts);
     }
 
+    private function escapeGraphQLBlockString($value): string
+    {
+        $value = (string) $value;
+        // Avoid closing the block string accidentally
+        return str_replace('"""', '\\"""', $value);
+    }
+
     private function buildProductsWithVariantsQuery(int $first = 20, ?string $after = null, string $queryString = '', bool $includeCategory = true, bool $includeOnlineStoreUrl = true): string
     {
         $afterClause = $after ? ', after: "' . $after . '"' : '';
-        $queryClause = $queryString !== '' ? ', query: "' . $queryString . '"' : '';
+        // Use GraphQL block strings so Shopify search queries like tag:"foo" don't break GraphQL parsing
+        $queryClause = $queryString !== '' ? ', query: """' . $this->escapeGraphQLBlockString($queryString) . '"""' : '';
 
         $onlineStoreUrlField = $includeOnlineStoreUrl ? "\n                        onlineStoreUrl" : '';
         $categoryField = $includeCategory ? "\n                        category {\n                            fullName\n                        }" : '';
@@ -588,6 +596,7 @@ class ShopifyService
                             edges {
                                 node {
                                     id
+                                    title
                                     sku
                                     barcode
                                     price
@@ -621,9 +630,10 @@ class ShopifyService
             $tags = $product['tags'] ?? [];
             $tagsString = is_array($tags) ? implode(', ', $tags) : (string) $tags;
 
-            $onlineStoreUrl = $product['onlineStoreUrl'] ?? '';
-            if (!$onlineStoreUrl && $handle) {
-                $onlineStoreUrl = $this->storeDomain ? ('https://' . $this->storeDomain . '/products/' . $handle) : '';
+            // Always use the public storefront domain for exports/views
+            $onlineStoreUrl = '';
+            if ($handle) {
+                $onlineStoreUrl = 'https://fairliar.jp/products/' . $handle;
             }
 
             $category = '';
@@ -642,6 +652,7 @@ class ShopifyService
 
                 $variants[] = [
                     'variant_id' => $variantIdNumeric,
+                    'variant_name' => $variant['title'] ?? '',
                     'sku' => $variant['sku'] ?? '',
                     'barcode' => $variant['barcode'] ?? '',
                     'price' => $variant['price'] ?? '',
@@ -979,8 +990,8 @@ class ShopifyService
         $errors = [];
         
         // Get locations first
-        $locations = $this->getLocations();
-        
+            $afterClause = $after ? ', after: "' . $after . '"' : '';
+            $queryClause = $queryString !== '' ? ', query: "' . $queryString . '"' : '';
         for ($batch = 0; $batch < $maxBatches; $batch++) {
             $result = $this->getInventory($locationId, $productType, $vendor, 50);
             

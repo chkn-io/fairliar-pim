@@ -95,6 +95,7 @@ class ProductsController extends Controller
                 'URL',
                 'Category',
                 'Variant ID',
+                'Variant Name',
                 'Variant SKU',
                 'Variant Barcode',
                 'Variant Price',
@@ -142,6 +143,7 @@ class ProductsController extends Controller
                             '',
                             '',
                             '',
+                            '',
                         ]);
                         continue;
                     }
@@ -159,6 +161,7 @@ class ProductsController extends Controller
                             $url,
                             $category,
                             $variant['variant_id'] ?? '',
+                            $variant['variant_name'] ?? '',
                             $variant['sku'] ?? '',
                             $variant['barcode'] ?? '',
                             $variant['price'] ?? '',
