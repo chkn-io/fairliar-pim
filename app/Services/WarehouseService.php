@@ -40,7 +40,7 @@ class WarehouseService
                 'json' => [
                     'f' => [],
                     'ap' => [],
-                    'c' => ['optionHasCodeByShop']
+                    'c' => ['optionHasCodeByShop', 'availabilityInfo']
                 ],
                 'query' => [
                     'page' => $page,
@@ -136,7 +136,7 @@ class WarehouseService
                         return [
                             'warehouse_id' => $variant['id'],
                             'variant_name' => $variant['variant_name'],
-                            'stock' => (int)$variant['stock'],
+                            'stock' => $this->extractAvailableQty($variant),
                             'barcode' => $variant['barcode1'] ?? '',
                             'sku' => $variant['sguid'] ?? '',
                             'warehouse_stocks' => $variant['variant_stock'] ?? []
@@ -187,7 +187,7 @@ class WarehouseService
                         $stockMap[$shopifyId] = [
                             'warehouse_id' => $variant['id'],
                             'variant_name' => $variant['variant_name'],
-                            'stock' => (int)$variant['stock'],
+                            'stock' => $this->extractAvailableQty($variant),
                             'barcode' => $variant['barcode1'] ?? '',
                             'sku' => $variant['sguid'] ?? '',
                             'cost_price' => $variant['cost_price'] ?? 0,
@@ -234,7 +234,7 @@ class WarehouseService
         try {
             // Join SKUs with pipe delimiter for 'in' operator
             $skuList = implode('|', array_map('urlencode', $skus));
-            $url = $this->apiUrl . '?f[]=barcode1,in,' . $skuList . ',and&c[]=optionHasCodeByShop&per_page=100';
+            $url = $this->apiUrl . '?f[]=barcode1,in,' . $skuList . ',and&c[]=optionHasCodeByShop&c[]=availabilityInfo&per_page=100';
             
             $response = $this->client->request('GET', $url, [
                 'headers' => [
@@ -276,7 +276,7 @@ class WarehouseService
                         'warehouse_id' => $variant['id'],
                         'shopify_variant_id' => $shopifyVariantId,
                         'variant_name' => $variant['variant_name'] ?? '',
-                        'stock' => (int)($variant['stock'] ?? 0),
+                        'stock' => $this->extractAvailableQty($variant),
                         'barcode1' => $barcode,
                         'sku' => $barcode,
                         'cost_price' => $variant['cost_price'] ?? 0,
@@ -318,7 +318,7 @@ class WarehouseService
 
         try {
             // Build URL with filter parameters as string
-            $url = $this->apiUrl . '?f[]=barcode1,=,' . urlencode($sku) . ',and&c[]=optionHasCodeByShop';
+            $url = $this->apiUrl . '?f[]=barcode1,=,' . urlencode($sku) . ',and&c[]=optionHasCodeByShop&c[]=availabilityInfo';
             
             $response = $this->client->request('GET', $url, [
                 'headers' => [
@@ -347,7 +347,7 @@ class WarehouseService
                     'warehouse_id' => $variant['id'],
                     'shopify_variant_id' => $shopifyVariantId,
                     'variant_name' => $variant['variant_name'] ?? '',
-                    'stock' => (int)($variant['stock'] ?? 0),
+                    'stock' => $this->extractAvailableQty($variant),
                     'barcode1' => $variant['barcode1'] ?? '',
                     'sku' => $sku,
                     'cost_price' => $variant['cost_price'] ?? 0,
@@ -366,5 +366,19 @@ class WarehouseService
             
             return null;
         }
+    }
+
+    private function extractAvailableQty(array $variant): int
+    {
+        if (!array_key_exists('availability_info', $variant) || $variant['availability_info'] === null) {
+            return 0;
+        }
+
+        if (!is_array($variant['availability_info'])) {
+            return 0;
+        }
+
+        $availableQty = $variant['availability_info']['available_qty'] ?? 0;
+        return (int) $availableQty;
     }
 }
