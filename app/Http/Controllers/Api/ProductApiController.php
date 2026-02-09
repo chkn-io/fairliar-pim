@@ -141,7 +141,7 @@ class ProductApiController extends Controller
     private function fetchProductsFromShopify($shopDomain, $accessToken, $statusQuery)
     {
         $client = new Client();
-        $apiVersion = config('shopify.api_version', '2024-10');
+        $apiVersion = config('shopify.api_version', '2025-10');
         $graphqlEndpoint = "https://{$shopDomain}/admin/api/{$apiVersion}/graphql.json";
 
         $allProducts = [];
@@ -201,7 +201,7 @@ class ProductApiController extends Controller
     private function fetchProductsFromCollection($shopDomain, $accessToken, $collectionId, $statusQuery)
     {
         $client = new Client();
-        $apiVersion = config('shopify.api_version', '2024-10');
+        $apiVersion = config('shopify.api_version', '2025-10');
         $graphqlEndpoint = "https://{$shopDomain}/admin/api/{$apiVersion}/graphql.json";
 
         // Convert numeric ID to GID format
