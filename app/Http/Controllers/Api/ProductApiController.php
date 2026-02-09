@@ -43,28 +43,35 @@ class ProductApiController extends Controller
             ], 404);
         }
 
-        // Build query filters
-        $queryFilters = $this->buildQueryFilters($status, $collectionId);
+        if (!$collectionId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Collection ID is required',
+                'data' => []
+            ], 400);
+        }
 
-        Log::info('Fetching products with filters', [
+        Log::info('Fetching products from collection', [
             'store' => $storeName,
-            'query' => $queryFilters
+            'collection_id' => $collectionId,
+            'status_filter' => $status
         ]);
 
         try {
             // Fetch products from Shopify
-            $products = $collectionId 
-                ? $this->fetchProductsFromCollection(
+            $products = $this->fetchProductsFromCollection(
                     $store->shop_domain,
                     $store->access_token,
-                    $collectionId,
-                    $queryFilters
-                  )
-                : $this->fetchProductsFromShopify(
-                    $store->shop_domain,
-                    $store->access_token,
-                    $queryFilters
+                    $collectionId
                   );
+
+            // Filter by status if specified
+            if ($status) {
+                $allowedStatuses = array_map('strtoupper', array_map('trim', explode(',', $status)));
+                $products = array_values(array_filter($products, function($product) use ($allowedStatuses) {
+                    return in_array(strtoupper($product['status']), $allowedStatuses);
+                }));
+            }
 
             return response()->json([
                 'success' => true,
@@ -113,6 +120,9 @@ class ProductApiController extends Controller
                     case 'archived':
                         $statusQueries[] = 'status:archived';
                         break;
+                    case 'unlisted':
+                        $statusQueries[] = 'status:unlisted';
+                        break;
                 }
             }
 
@@ -136,69 +146,9 @@ class ProductApiController extends Controller
     }
 
     /**
-     * Fetch all products from Shopify using GraphQL
-     */
-    private function fetchProductsFromShopify($shopDomain, $accessToken, $statusQuery)
-    {
-        $client = new Client();
-        $apiVersion = config('shopify.api_version', '2025-10');
-        $graphqlEndpoint = "https://{$shopDomain}/admin/api/{$apiVersion}/graphql.json";
-
-        $allProducts = [];
-        $hasNextPage = true;
-        $cursor = null;
-        $first = 250; // Maximum allowed by Shopify
-
-        while ($hasNextPage) {
-            $graphqlQuery = $this->buildProductsQuery($first, $cursor, $statusQuery);
-
-            Log::info('Shopify GraphQL Query', ['query' => $graphqlQuery]);
-
-            try {
-                $response = $client->post($graphqlEndpoint, [
-                    'headers' => [
-                        'Content-Type' => 'application/json',
-                        'X-Shopify-Access-Token' => $accessToken,
-                    ],
-                    'json' => [
-                        'query' => $graphqlQuery
-                    ]
-                ]);
-
-                $data = json_decode($response->getBody()->getContents(), true);
-
-                if (isset($data['errors'])) {
-                    Log::error('Shopify GraphQL errors:', $data['errors']);
-                    throw new \Exception('Shopify API returned errors');
-                }
-
-                $edges = $data['data']['products']['edges'] ?? [];
-                $pageInfo = $data['data']['products']['pageInfo'] ?? [];
-
-                foreach ($edges as $edge) {
-                    $product = $edge['node'];
-                    $allProducts[] = $this->formatProduct($product);
-                }
-
-                $hasNextPage = $pageInfo['hasNextPage'] ?? false;
-                $cursor = $hasNextPage && !empty($edges) ? end($edges)['cursor'] : null;
-
-            } catch (RequestException $e) {
-                Log::error('Shopify API request failed:', [
-                    'message' => $e->getMessage(),
-                    'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
-                ]);
-                throw new \Exception('Failed to fetch products from Shopify');
-            }
-        }
-
-        return $allProducts;
-    }
-
-    /**
      * Fetch products from a specific collection using GraphQL
      */
-    private function fetchProductsFromCollection($shopDomain, $accessToken, $collectionId, $statusQuery)
+    private function fetchProductsFromCollection($shopDomain, $accessToken, $collectionId)
     {
         $client = new Client();
         $apiVersion = config('shopify.api_version', '2025-10');
@@ -208,9 +158,6 @@ class ProductApiController extends Controller
         if (is_numeric($collectionId)) {
             $collectionId = 'gid://shopify/Collection/' . $collectionId;
         }
-
-        // Parse status filter to get allowed statuses
-        $allowedStatuses = $this->parseStatusFilter($statusQuery);
 
         $allProducts = [];
         $hasNextPage = true;
@@ -234,6 +181,7 @@ class ProductApiController extends Controller
                 ]);
 
                 $data = json_decode($response->getBody()->getContents(), true);
+                    
 
                 if (isset($data['errors'])) {
                     Log::error('Shopify GraphQL errors:', $data['errors']);
@@ -245,15 +193,6 @@ class ProductApiController extends Controller
 
                 foreach ($edges as $edge) {
                     $product = $edge['node'];
-                    
-                    // Filter by status if specified
-                    if (!empty($allowedStatuses)) {
-                        $productStatus = strtoupper($product['status']);
-                        if (!in_array($productStatus, $allowedStatuses)) {
-                            continue; // Skip this product
-                        }
-                    }
-                    
                     $allProducts[] = $this->formatProduct($product);
                 }
 
@@ -284,7 +223,7 @@ class ProductApiController extends Controller
         $statuses = [];
         
         // Extract status values from query like "status:active" or "(status:active OR status:draft)"
-        if (preg_match_all('/status:(active|draft|archived)/i', $statusQuery, $matches)) {
+        if (preg_match_all('/status:(active|draft|archived|unlisted)/i', $statusQuery, $matches)) {
             foreach ($matches[1] as $status) {
                 $statuses[] = strtoupper($status);
             }
@@ -302,77 +241,41 @@ class ProductApiController extends Controller
 
         return '{
             collection(id: "' . $collectionId . '") {
+                id
+                title
                 products(first: ' . $first . $afterClause . ') {
                     edges {
-                        cursor
                         node {
                             id
                             title
                             handle
-                            description
-                            descriptionHtml
                             status
-                            createdAt
-                            updatedAt
-                            publishedAt
                             vendor
                             productType
                             tags
-                            onlineStoreUrl
                             totalInventory
-                            featuredImage {
-                                id
-                                url
-                                altText
-                                width
-                                height
-                            }
-                            images(first: 10) {
+                            images(first: 1) {
                                 edges {
                                     node {
-                                        id
                                         url
                                         altText
-                                        width
-                                        height
                                     }
                                 }
                             }
-                            variants(first: 100) {
+                            variants(first: 10) {
                                 edges {
                                     node {
                                         id
                                         title
                                         sku
+                                        availableForSale
+                                        inventoryQuantity
                                         price
                                         compareAtPrice
-                                        position
-                                        inventoryQuantity
-                                        availableForSale
-                                        barcode
-                                        image {
-                                            id
-                                            url
-                                            altText
-                                        }
-                                        selectedOptions {
-                                            name
-                                            value
-                                        }
                                     }
                                 }
                             }
-                            options {
-                                id
-                                name
-                                position
-                                values
-                            }
                         }
-                    }
-                    pageInfo {
-                        hasNextPage
-                        hasPreviousPage
                     }
                 }
             }
@@ -472,61 +375,29 @@ class ProductApiController extends Controller
         return [
             'id' => $product['id'],
             'title' => $product['title'],
-            'handle' => $product['handle'] ?? null,
-            'description' => $product['description'] ?? null,
-            'description_html' => $product['descriptionHtml'] ?? null,
+            'handle' => $product['handle'],
             'status' => $product['status'],
-            'created_at' => $product['createdAt'],
-            'updated_at' => $product['updatedAt'],
-            'published_at' => $product['publishedAt'] ?? null,
-            'vendor' => $product['vendor'] ?? null,
-            'product_type' => $product['productType'] ?? null,
-            'tags' => $product['tags'] ?? [],
-            'online_store_url' => $product['onlineStoreUrl'] ?? null,
-            'total_inventory' => $product['totalInventory'] ?? 0,
-            'featured_image' => $product['featuredImage'] ? [
-                'id' => $product['featuredImage']['id'],
-                'url' => $product['featuredImage']['url'],
-                'alt_text' => $product['featuredImage']['altText'] ?? null,
-                'width' => $product['featuredImage']['width'] ?? null,
-                'height' => $product['featuredImage']['height'] ?? null,
-            ] : null,
+            'vendor' => $product['vendor'],
+            'product_type' => $product['productType'],
+            'tags' => $product['tags'],
+            'total_inventory' => $product['totalInventory'],
             'images' => array_map(function($edge) {
                 return [
-                    'id' => $edge['node']['id'],
                     'url' => $edge['node']['url'],
                     'alt_text' => $edge['node']['altText'] ?? null,
-                    'width' => $edge['node']['width'] ?? null,
-                    'height' => $edge['node']['height'] ?? null,
                 ];
             }, $product['images']['edges'] ?? []),
             'variants' => array_map(function($edge) {
                 return [
                     'id' => $edge['node']['id'],
                     'title' => $edge['node']['title'],
-                    'sku' => $edge['node']['sku'] ?? null,
+                    'sku' => $edge['node']['sku'],
+                    'available_for_sale' => $edge['node']['availableForSale'],
+                    'inventory_quantity' => $edge['node']['inventoryQuantity'],
                     'price' => $edge['node']['price'],
                     'compare_at_price' => $edge['node']['compareAtPrice'] ?? null,
-                    'position' => $edge['node']['position'],
-                    'inventory_quantity' => $edge['node']['inventoryQuantity'],
-                    'available_for_sale' => $edge['node']['availableForSale'],
-                    'barcode' => $edge['node']['barcode'] ?? null,
-                    'image' => $edge['node']['image'] ? [
-                        'id' => $edge['node']['image']['id'],
-                        'url' => $edge['node']['image']['url'],
-                        'alt_text' => $edge['node']['image']['altText'] ?? null,
-                    ] : null,
-                    'selected_options' => $edge['node']['selectedOptions'] ?? [],
                 ];
             }, $product['variants']['edges'] ?? []),
-            'options' => array_map(function($option) {
-                return [
-                    'id' => $option['id'],
-                    'name' => $option['name'],
-                    'position' => $option['position'],
-                    'values' => $option['values'] ?? [],
-                ];
-            }, $product['options'] ?? []),
         ];
     }
 }
