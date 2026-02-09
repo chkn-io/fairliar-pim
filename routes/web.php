@@ -58,6 +58,15 @@ Route::middleware('auth')->group(function () {
     Route::middleware('admin')->group(function () {
         Route::get('/settings/warehouse', [App\Http\Controllers\SettingsController::class, 'warehouse'])->name('settings.warehouse');
         Route::put('/settings/warehouse', [App\Http\Controllers\SettingsController::class, 'updateWarehouse'])->name('settings.warehouse.update');
+        
+        // Store API Keys settings
+        Route::get('/settings/stores', [App\Http\Controllers\StoreSettingsController::class, 'index'])->name('settings.stores');
+        Route::get('/settings/stores/{store}', [App\Http\Controllers\StoreSettingsController::class, 'show'])->name('settings.stores.show');
+        Route::post('/settings/stores', [App\Http\Controllers\StoreSettingsController::class, 'store'])->name('settings.stores.store');
+        Route::put('/settings/stores/{store}', [App\Http\Controllers\StoreSettingsController::class, 'update'])->name('settings.stores.update');
+        Route::delete('/settings/stores/{store}', [App\Http\Controllers\StoreSettingsController::class, 'destroy'])->name('settings.stores.destroy');
+        Route::post('/settings/stores/{store}/set-default', [App\Http\Controllers\StoreSettingsController::class, 'setDefault'])->name('settings.stores.set-default');
+        Route::post('/settings/stores/{store}/toggle-active', [App\Http\Controllers\StoreSettingsController::class, 'toggleActive'])->name('settings.stores.toggle-active');
     });
 
     // Admin only routes for user management

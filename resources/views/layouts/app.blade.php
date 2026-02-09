@@ -151,6 +151,20 @@
             text-align: center;
         }
 
+        .nav-submenu {
+            padding-left: 1rem;
+            margin-top: 0.25rem;
+        }
+
+        .nav-submenu .nav-link {
+            font-size: 0.875rem;
+            padding: 0.625rem 1rem;
+        }
+
+        .nav-submenu .nav-link i {
+            font-size: 1rem;
+        }
+
         .sidebar-footer {
             padding: 1rem 1.25rem;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -581,10 +595,23 @@
                             </a>
                         </div>
                         <div class="nav-item">
-                            <a class="nav-link {{ request()->routeIs('settings.*') ? 'active' : '' }}" href="{{ route('settings.warehouse') }}">
+                            <a class="nav-link {{ request()->routeIs('settings.*') ? 'active' : '' }}" href="#" data-bs-toggle="collapse" data-bs-target="#settingsMenu" aria-expanded="{{ request()->routeIs('settings.*') ? 'true' : 'false' }}">
                                 <i class="bi bi-gear"></i>
                                 <span>Settings</span>
+                                <i class="bi bi-chevron-down ms-auto" style="font-size: 0.75rem;"></i>
                             </a>
+                            <div class="collapse {{ request()->routeIs('settings.*') ? 'show' : '' }}" id="settingsMenu">
+                                <div class="nav-submenu">
+                                    <a class="nav-link {{ request()->routeIs('settings.warehouse') ? 'active' : '' }}" href="{{ route('settings.warehouse') }}">
+                                        <i class="bi bi-box-seam"></i>
+                                        <span>Warehouse API</span>
+                                    </a>
+                                    <a class="nav-link {{ request()->routeIs('settings.stores*') ? 'active' : '' }}" href="{{ route('settings.stores') }}">
+                                        <i class="bi bi-key"></i>
+                                        <span>Store API Keys</span>
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 @endif
