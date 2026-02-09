@@ -209,6 +209,9 @@ class ProductApiController extends Controller
             $collectionId = 'gid://shopify/Collection/' . $collectionId;
         }
 
+        // Parse status filter to get allowed statuses
+        $allowedStatuses = $this->parseStatusFilter($statusQuery);
+
         $allProducts = [];
         $hasNextPage = true;
         $cursor = null;
@@ -242,6 +245,15 @@ class ProductApiController extends Controller
 
                 foreach ($edges as $edge) {
                     $product = $edge['node'];
+                    
+                    // Filter by status if specified
+                    if (!empty($allowedStatuses)) {
+                        $productStatus = strtoupper($product['status']);
+                        if (!in_array($productStatus, $allowedStatuses)) {
+                            continue; // Skip this product
+                        }
+                    }
+                    
                     $allProducts[] = $this->formatProduct($product);
                 }
 
@@ -258,6 +270,27 @@ class ProductApiController extends Controller
         }
 
         return $allProducts;
+    }
+
+    /**
+     * Parse status filter query and return allowed statuses
+     */
+    private function parseStatusFilter($statusQuery)
+    {
+        if (empty($statusQuery)) {
+            return [];
+        }
+
+        $statuses = [];
+        
+        // Extract status values from query like "status:active" or "(status:active OR status:draft)"
+        if (preg_match_all('/status:(active|draft|archived)/i', $statusQuery, $matches)) {
+            foreach ($matches[1] as $status) {
+                $statuses[] = strtoupper($status);
+            }
+        }
+
+        return $statuses;
     }
 
     /**
