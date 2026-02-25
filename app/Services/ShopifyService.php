@@ -277,7 +277,7 @@ class ShopifyService
     /**
      * Get inventory levels from all locations
      */
-    public function getInventory($locationId = null, $productType = null, $vendor = null, $first = 20, $fetchAll = true)
+    public function getInventory($locationId = null, $productType = null, $vendor = null, $first = 20, $fetchAll = true, $sku = null)
     {
         $allInventory = [];
         $allErrors = [];
@@ -289,7 +289,8 @@ class ShopifyService
         Log::info('Starting inventory fetch:', [
             'location_id' => $locationId ?? 'all',
             'fetch_all' => $fetchAll,
-            'products_per_page' => $first
+            'products_per_page' => $first,
+            'sku_filter' => $sku ?? 'none'
         ]);
         
         while ($hasNextPage && $pageCount < $maxIterations) {
@@ -299,7 +300,7 @@ class ShopifyService
                 break;
             }
             
-            $graphqlQuery = $this->buildInventoryQuery($locationId, $productType, $vendor, $first, $after);
+            $graphqlQuery = $this->buildInventoryQuery($locationId, $productType, $vendor, $first, $after, $sku);
             
             try {
                 $response = $this->client->post($this->graphqlEndpoint, [
@@ -397,7 +398,7 @@ class ShopifyService
     /**
      * Get a single page of inventory for pagination
      */
-    public function getInventoryPage($locationId = null, $productType = null, $vendor = null, $first = 20, $page = 1)
+    public function getInventoryPage($locationId = null, $productType = null, $vendor = null, $first = 20, $page = 1, $sku = null)
     {
         // Calculate cursor position based on page number
         // We'll need to fetch pages sequentially to get the right cursor
@@ -408,7 +409,7 @@ class ShopifyService
         $hasNextPage = false;
         
         while ($currentPage <= $page) {
-            $graphqlQuery = $this->buildInventoryQuery($locationId, $productType, $vendor, $first, $after);
+            $graphqlQuery = $this->buildInventoryQuery($locationId, $productType, $vendor, $first, $after, $sku);
             
             try {
                 $response = $this->client->post($this->graphqlEndpoint, [
@@ -814,14 +815,19 @@ class ShopifyService
     /**
      * Build inventory GraphQL query
      */
-    private function buildInventoryQuery($locationId = null, $productType = null, $vendor = null, $first = 50, $after = null)
+    private function buildInventoryQuery($locationId = null, $productType = null, $vendor = null, $first = 50, $after = null, $sku = null)
     {
         $productQuery = '';
         
-        if ($productType || $vendor) {
+        if ($productType || $vendor || $sku) {
             $filters = [];
             if ($productType) $filters[] = 'product_type:' . $productType;
             if ($vendor) $filters[] = 'vendor:' . $vendor;
+            if ($sku) {
+                // Use wildcard search for SKU
+                $escapedSku = $this->escapeShopifyQueryValue($sku);
+                $filters[] = 'sku:*' . $escapedSku . '*';
+            }
             $productQuery = ', query: "' . implode(' AND ', $filters) . '"';
         }
 
@@ -1295,6 +1301,155 @@ class ShopifyService
                 'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
             ]);
             return false;
+        }
+    }
+
+    /**
+     * Update product handle (controls /products/{handle} URL in the Online Store).
+     *
+     * @return array{success:bool, message?:string, handle?:string}
+     */
+    public function updateProductHandle(string $productGid, string $handle): array
+    {
+        $mutation = 'mutation UpdateProductHandle($input: ProductInput!) {
+            productUpdate(input: $input) {
+                product {
+                    id
+                    handle
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }';
+
+        $variables = [
+            'input' => [
+                'id' => $productGid,
+                'handle' => $handle,
+            ],
+        ];
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $mutation,
+                    'variables' => $variables,
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($data['errors'])) {
+                Log::error('Shopify product handle update GraphQL errors:', $data['errors']);
+                return [
+                    'success' => false,
+                    'message' => 'GraphQL errors returned by Shopify',
+                ];
+            }
+
+            $userErrors = $data['data']['productUpdate']['userErrors'] ?? [];
+            if (!empty($userErrors)) {
+                Log::error('Shopify product handle update userErrors:', $userErrors);
+                $messages = array_map(function ($e) {
+                    return $e['message'] ?? 'Unknown error';
+                }, $userErrors);
+
+                return [
+                    'success' => false,
+                    'message' => implode('; ', $messages),
+                ];
+            }
+
+            $updatedHandle = $data['data']['productUpdate']['product']['handle'] ?? null;
+
+            return [
+                'success' => true,
+                'handle' => is_string($updatedHandle) ? $updatedHandle : $handle,
+            ];
+
+        } catch (RequestException $e) {
+            Log::error('Shopify product handle update failed:', [
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'API request failed: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Fetch a product by its current handle.
+     *
+     * @return array{success:bool, productGid?:string, handle?:string, title?:string, message?:string}
+     */
+    public function getProductByHandle(string $handle): array
+    {
+        $query = 'query GetProductByHandle($handle: String!) {
+            productByHandle(handle: $handle) {
+                id
+                handle
+                title
+            }
+        }';
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $query,
+                    'variables' => [
+                        'handle' => $handle,
+                    ],
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($data['errors'])) {
+                Log::error('Shopify getProductByHandle GraphQL errors:', $data['errors']);
+                return [
+                    'success' => false,
+                    'message' => 'GraphQL errors returned by Shopify',
+                ];
+            }
+
+            $product = $data['data']['productByHandle'] ?? null;
+            if (!$product) {
+                return [
+                    'success' => false,
+                    'message' => 'Product not found',
+                ];
+            }
+
+            return [
+                'success' => true,
+                'productGid' => $product['id'] ?? null,
+                'handle' => $product['handle'] ?? null,
+                'title' => $product['title'] ?? null,
+            ];
+
+        } catch (RequestException $e) {
+            Log::error('Shopify getProductByHandle failed:', [
+                'message' => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'API request failed: ' . $e->getMessage(),
+            ];
         }
     }
 
