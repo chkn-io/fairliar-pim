@@ -52,20 +52,17 @@ class InventoryController extends Controller
                     $filters['product_type'],
                     $filters['vendor'],
                     20,  // Fetch 20 products to stay under API cost limit
-                    $filters['page']
+                    $filters['page'],
+                    $filters['sku_filter'] // Pass SKU filter to Shopify query
                 );
 
                 $errors = $result['errors'] ?? [];
                 $inventory = $result['inventory'] ?? [];
                 $pagination['has_next'] = $result['has_next_page'] ?? false;
                 
-                // Apply additional filters
-                if ($filters['sku_filter']) {
-                    $inventory = array_filter($inventory, function($item) use ($filters) {
-                        return stripos($item['sku'] ?? '', $filters['sku_filter']) !== false;
-                    });
-                }
+                // Note: SKU filter is now applied in the Shopify query, not here
                 
+                // Apply status filter (this one still needs to be applied here)
                 if ($filters['status'] !== 'all') {
                     $inventory = array_filter($inventory, function($item) use ($filters) {
                         return strtolower($item['product_status'] ?? '') === strtolower($filters['status']);
@@ -103,7 +100,8 @@ class InventoryController extends Controller
             $filters['product_type'],
             $filters['vendor'],
             20,  // Fetch 20 products per page (with 75 variants, 10 locations each)
-            true   // Fetch all pages (will automatically paginate through all products)
+            true,  // Fetch all pages (will automatically paginate through all products)
+            $filters['sku_filter'] // Pass SKU filter to Shopify query
         );
 
         if (!empty($result['errors'])) {
@@ -112,13 +110,9 @@ class InventoryController extends Controller
 
         $inventory = $result['inventory'];
         
-        // Apply additional filters
-        if ($filters['sku_filter']) {
-            $inventory = array_filter($inventory, function($item) use ($filters) {
-                return stripos($item['sku'], $filters['sku_filter']) !== false;
-            });
-        }
+        // Note: SKU filter is now applied in the Shopify query, not here
         
+        // Apply status filter (this one still needs to be applied here)
         if ($filters['status'] !== 'all') {
             $inventory = array_filter($inventory, function($item) use ($filters) {
                 return strtolower($item['product_status']) === strtolower($filters['status']);
