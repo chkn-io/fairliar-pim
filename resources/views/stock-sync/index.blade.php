@@ -38,6 +38,16 @@
                                placeholder="Product name, SKU, barcode, variant ID...">
                     </div>
                     
+                    <div class="col-12 col-md-2">
+                        <label for="tag" class="form-label">Product Tag</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="tag" 
+                               name="tag" 
+                               value="{{ $tag }}"
+                               placeholder="e.g. 24ss, 26ss...">
+                    </div>
+                    
                     <div class="col-12 col-md-3">
                         <label for="location_id" class="form-label">Location</label>
                         <select class="form-select" id="location_id" name="location_id">
@@ -126,6 +136,7 @@
                             <th>Variant</th>
                             <th>SKU</th>
                             <th>Barcode</th>
+                            <th>Tags</th>
                             <th class="text-center">Sync Status</th>
                             <th class="text-center">Shopify Stock</th>
                             <th class="text-center">Warehouse Stock</th>
@@ -177,6 +188,18 @@
                             <td>{{ $item['variant_title'] }}</td>
                             <td><code>{{ $item['sku'] ?: '-' }}</code></td>
                             <td><code>{{ $item['barcode'] ?: '-' }}</code></td>
+                            <td>
+                                @if(!empty($item['product_tags']))
+                                    @foreach(array_slice(array_map('trim', explode(',', $item['product_tags'])), 0, 3) as $tag)
+                                        <span class="badge bg-info text-dark me-1 mb-1">{{ $tag }}</span>
+                                    @endforeach
+                                    @if(count(explode(',', $item['product_tags'])) > 3)
+                                        <span class="badge bg-light text-muted">+{{ count(explode(',', $item['product_tags'])) - 3 }}</span>
+                                    @endif
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
                             <td class="text-center">
                                 @if($isSyncEnabled)
                                     <span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>
@@ -669,7 +692,7 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
                 if (data.success) {
                     // Update the row instead of reloading
                     const row = document.querySelector(`button[onclick*="${variantGid}"]`).closest('tr');
-                    const statusCell = row.querySelector('td:nth-child(5)'); // Sync Status column
+                    const statusCell = row.querySelector('td:nth-child(7)'); // Sync Status column (after checkbox, product, variant, sku, barcode, tags)
                     const actionsCell = row.querySelector('td:last-child'); // Actions column
                     
                     // Update status badge

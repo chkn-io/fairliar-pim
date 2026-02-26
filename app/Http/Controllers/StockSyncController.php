@@ -28,6 +28,7 @@ class StockSyncController extends Controller
     public function index(Request $request)
     {
         $search = $request->input('search');
+        $tag = $request->input('tag');
         $sort = $request->input('sort', 'product_asc');
         
         // Get default location from settings if not specified
@@ -52,7 +53,7 @@ class StockSyncController extends Controller
         $syncStatusFilter = $request->input('sync_status', '');
         
         // Use cursor-based pagination with GraphQL sorting
-        Log::info('Fetching variants page...', ['page' => $page, 'location_id' => $locationId, 'search' => $search, 'sync_status' => $syncStatusFilter]);
+        Log::info('Fetching variants page...', ['page' => $page, 'location_id' => $locationId, 'search' => $search, 'tag' => $tag, 'sync_status' => $syncStatusFilter]);
             
         // Build search query for GraphQL if search term provided
         $searchQuery = '';
@@ -67,8 +68,14 @@ class StockSyncController extends Controller
                 'barcode:*' . $searchTerm . '*)';
         }
         
+        // Add tag filter to search query if provided (partial match to get candidates)
+        if (!empty($tag)) {
+            $tagTerm = trim($tag);
+            $searchQuery .= ' AND product_tag:' . $tagTerm;
+        }
+        
         // Store cursors in session for pagination
-        $sessionKey = 'stock_sync_cursors_' . ($locationId ?? 'all') . '_' . md5($search . $syncStatusFilter);
+        $sessionKey = 'stock_sync_cursors_' . ($locationId ?? 'all') . '_' . md5($search . $tag . $syncStatusFilter);
         $cursors = session($sessionKey, [1 => null]); // Page 1 starts with null cursor
         
         // Get cursor for requested page
@@ -82,7 +89,7 @@ class StockSyncController extends Controller
                     $tempCursor = $cursors[$i + 1];
                 } else {
                     // Fetch enough variants to get a full page after filtering
-                    $tempVariants = $this->fetchVariantsUntilCount($perPage, $tempCursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter);
+                    $tempVariants = $this->fetchVariantsUntilCount($perPage, $tempCursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter, $tag);
                     $tempCursor = $tempVariants['cursor'];
                     $cursors[$i + 1] = $tempCursor;
                 }
@@ -92,7 +99,7 @@ class StockSyncController extends Controller
         }
         
         // Fetch variants with filtering until we have enough for this page
-        $fetchResult = $this->fetchVariantsUntilCount($perPage, $cursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter);
+        $fetchResult = $this->fetchVariantsUntilCount($perPage, $cursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter, $tag);
         $shopifyVariants = $fetchResult['variants'];
         $hasNextPage = $fetchResult['hasNextPage'];
         $nextCursor = $fetchResult['cursor'];
@@ -130,6 +137,7 @@ class StockSyncController extends Controller
                 'product_gid' => $variant['product_gid'],
                 'product_title' => $variant['product_title'],
                 'product_handle' => $variant['product_handle'] ?? '',
+                'product_tags' => $variant['product_tags'] ?? '',
                 'variant_title' => $variant['variant_title'],
                 'sku' => $variant['sku'],
                 'barcode' => $variant['barcode'],
@@ -164,6 +172,7 @@ class StockSyncController extends Controller
             'locations' => $locations,
             'selectedLocation' => $locationId,
             'search' => $search,
+            'tag' => $tag,
             'sort' => $sort,
             'syncStatusFilter' => $syncStatusFilter,
             'currentPage' => $currentPage,
@@ -548,14 +557,16 @@ class StockSyncController extends Controller
      * @param bool $reverse Sort direction
      * @param string $searchQuery Search query string
      * @param string $syncStatusFilter Sync status filter (included/excluded/unset)
+     * @param string|null $exactTag Exact tag to filter by (case-insensitive)
      * @return array ['variants' => array, 'cursor' => string, 'hasNextPage' => bool]
      */
-    private function fetchVariantsUntilCount($desiredCount, $cursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter)
+    private function fetchVariantsUntilCount($desiredCount, $cursor, $locationId, $sortKey, $reverse, $searchQuery, $syncStatusFilter, $exactTag = null)
     {
         $filteredVariants = [];
         $currentCursor = $cursor;
         $hasMore = true;
-        $maxAttempts = 10; // Prevent infinite loops
+        // When exact tag filtering is needed, we need more attempts since backend filtering reduces results
+        $maxAttempts = $exactTag ? 50 : 10;
         $attempts = 0;
         
         while (count($filteredVariants) < $desiredCount && $hasMore && $attempts < $maxAttempts) {
@@ -567,15 +578,31 @@ class StockSyncController extends Controller
             $hasMore = $result['pageInfo']['hasNextPage'];
             $currentCursor = $result['pageInfo']['endCursor'];
             
-            // Apply sync status filter
+            // Apply filters
             foreach ($variants as $variant) {
                 $pimSync = $variant['pim_sync'] ?? '';
                 
                 $matches = true;
+                
+                // Apply sync status filter
                 if ($syncStatusFilter) {
                     if ($syncStatusFilter === 'included' && $pimSync !== 'true') $matches = false;
                     if ($syncStatusFilter === 'excluded' && $pimSync !== 'false') $matches = false;
                     if ($syncStatusFilter === 'unset' && !empty($pimSync)) $matches = false;
+                }
+                
+                // Apply exact tag filter (backend verification for exact match)
+                if ($matches && $exactTag) {
+                    $productTags = $variant['product_tags'] ?? '';
+                    if (empty($productTags)) {
+                        $matches = false;
+                    } else {
+                        $tags = array_map('trim', explode(',', $productTags));
+                        // Case-insensitive exact match
+                        $exactTagLower = strtolower(trim($exactTag));
+                        $tagsLower = array_map('strtolower', $tags);
+                        $matches = in_array($exactTagLower, $tagsLower);
+                    }
                 }
                 
                 if ($matches) {

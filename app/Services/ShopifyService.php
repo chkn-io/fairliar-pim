@@ -1065,6 +1065,7 @@ class ShopifyService
                             title
                             handle
                             status
+                            tags
                         }
                         inventoryItem {
                             id
@@ -1149,6 +1150,10 @@ class ShopifyService
                     
                     // Extract inventory item ID
                     $inventoryItemId = $variant['inventoryItem']['id'] ?? '';
+                    
+                    // Extract product tags
+                    $productTags = $product['tags'] ?? [];
+                    $productTagsString = is_array($productTags) ? implode(', ', $productTags) : (string) $productTags;
 
                     $variantData = [
                         'variant_id' => $variantNumericId,
@@ -1158,6 +1163,8 @@ class ShopifyService
                         'product_title' => $product['title'],
                         'product_handle' => $product['handle'] ?? '',
                         'product_status' => $product['status'] ?? 'ACTIVE',
+                        'product_tags' => $productTagsString,
+                        'tags' => $productTagsString,
                         'pim_sync' => $pimSync,
                         'sync_timestamp' => $syncTimestamp,
                         'variant_title' => $variant['title'],
