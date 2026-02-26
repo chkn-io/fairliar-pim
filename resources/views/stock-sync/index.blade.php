@@ -545,8 +545,8 @@ function updateRowAfterBulkToggle(variantGid, pimSync, productGid, productTitle)
     const variantTitle = checkbox.dataset.variantTitle;
     const shopifyStock = checkbox.dataset.shopifyStock;
     
-    // Update status badge (column index 6 because of checkbox column)
-    const statusCell = row.querySelector('td:nth-child(6)');
+    // Update status badge (column index 7: checkbox, product, variant, sku, barcode, tags, sync status)
+    const statusCell = row.querySelector('td:nth-child(7)');
     if (statusCell) {
         if (pimSync === 'true') {
             statusCell.innerHTML = '<span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>';
@@ -822,8 +822,8 @@ function syncStock(variantId, inventoryItemId, locationId, warehouseStock, produ
                     const syncButton = document.querySelector(`.sync-stock-btn[data-variant-id="${variantId}"]`);
                     const row = syncButton.closest('tr');
                     
-                    // Update Shopify Stock column
-                    const shopifyStockCell = row.querySelector('td:nth-child(6)'); // Shopify Stock column
+                    // Update Shopify Stock column (column 8: checkbox, product, variant, sku, barcode, tags, sync status, shopify stock)
+                    const shopifyStockCell = row.querySelector('td:nth-child(8)'); // Shopify Stock column
                     shopifyStockCell.innerHTML = `<span class="badge bg-primary">${data.new_stock}</span>`;
                     
                     // Update Difference column
