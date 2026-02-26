@@ -1248,6 +1248,207 @@ class ShopifyService
     }
 
     /**
+     * Get variants from products with a specific tag
+     * More efficient for tag-based filtering
+     * 
+     * @param string $tag The tag to search for
+     * @param bool $fetchAll Fetch all pages or just first page
+     * @param bool $inverse If true, searches for products WITHOUT the tag (using -tag:value)
+     */
+    public function getVariantsByProductTag($tag, $fetchAll = true, $inverse = false)
+    {
+        $allVariants = [];
+        $hasNextPage = true;
+        $cursor = null;
+        $pageCount = 0;
+        $maxIterations = $fetchAll ? 1000 : 10;
+        
+        // Add '-' prefix for inverse search (products without the tag)
+        $tagQuery = $inverse ? "-tag:{$tag}" : "tag:{$tag}";
+        
+        Log::info('Starting variant fetch by product tag:', [
+            'tag' => $tag,
+            'inverse' => $inverse,
+            'fetch_all' => $fetchAll,
+            'query' => $tagQuery
+        ]);
+        
+        while ($hasNextPage && $pageCount < $maxIterations) {
+            $pageCount++;
+            
+            // Build GraphQL query
+            $afterClause = $cursor ? ', after: "' . $cursor . '"' : '';
+            $graphqlQuery = '{
+                products(first: 250, query: "' . $tagQuery . '"' . $afterClause . ') {
+                    edges {
+                        node {
+                            id
+                            title
+                            handle
+                            tags
+                            status
+                            variants(first: 100) {
+                                edges {
+                                    node {
+                                        id
+                                        title
+                                        sku
+                                        barcode
+                                        inventoryQuantity
+                                        metafield(namespace: "custom", key: "pim_sync") {
+                                            value
+                                        }
+                                        inventoryItem {
+                                            id
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                }
+            }';
+            
+            try {
+                $response = $this->client->post($this->graphqlEndpoint, [
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'X-Shopify-Access-Token' => $this->apiKey,
+                    ],
+                    'json' => [
+                        'query' => $graphqlQuery
+                    ]
+                ]);
+
+                $data = json_decode($response->getBody()->getContents(), true);
+
+                if (isset($data['errors'])) {
+                    Log::error('Shopify GraphQL errors:', $data['errors']);
+                    break;
+                }
+
+                $products = $data['data']['products']['edges'] ?? [];
+                $pageInfo = $data['data']['products']['pageInfo'] ?? [];
+
+                Log::info("Products page {$pageCount} fetched:", [
+                    'products_in_page' => count($products),
+                    'tag_query' => $tagQuery,
+                    'total_variants_so_far' => count($allVariants),
+                    'has_next_page' => $pageInfo['hasNextPage'] ?? false
+                ]);
+
+                // Extract variants from products
+                foreach ($products as $productEdge) {
+                    $product = $productEdge['node'];
+                    
+                    // Extract numeric IDs
+                    $productNumericId = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $product['id']);
+                    
+                    // Extract product tags
+                    $productTags = $product['tags'] ?? [];
+                    $productTagsString = is_array($productTags) ? implode(', ', $productTags) : (string) $productTags;
+                    
+                    Log::debug("Processing product:", [
+                        'title' => $product['title'],
+                        'tags_raw' => $productTags,
+                        'tags_string' => $productTagsString,
+                        'variant_count' => count($product['variants']['edges'] ?? [])
+                    ]);
+                    
+                    // Verify tag match based on inverse flag
+                    $tags = array_map('strtolower', array_map('trim', is_array($productTags) ? $productTags : explode(',', $productTags)));
+                    $hasTag = in_array(strtolower(trim($tag)), $tags);
+                    
+                    Log::debug("Tag matching:", [
+                        'search_tag' => strtolower(trim($tag)),
+                        'product_tags_lower' => $tags,
+                        'has_tag' => $hasTag,
+                        'inverse' => $inverse,
+                        'will_process' => !($inverse && $hasTag) && !(!$inverse && !$hasTag)
+                    ]);
+                    
+                    // For inverse search, skip if tag IS present
+                    // For normal search, skip if tag is NOT present
+                    if ($inverse && $hasTag) {
+                        continue; // Skip products that have the tag
+                    } elseif (!$inverse && !$hasTag) {
+                        continue; // Skip products that don't have the tag
+                    }
+                    
+                    // Process variants
+                    foreach ($product['variants']['edges'] ?? [] as $variantEdge) {
+                        $variant = $variantEdge['node'];
+                        
+                        // Extract numeric ID from GID
+                        $variantNumericId = preg_replace('/^gid:\/\/shopify\/\w+\//', '', $variant['id']);
+                        
+                        // Get metafield value
+                        $pimSync = $variant['metafield']['value'] ?? '';
+                        
+                        // Extract inventory item ID
+                        $inventoryItemId = $variant['inventoryItem']['id'] ?? '';
+                        
+                        $allVariants[] = [
+                            'variant_id' => $variantNumericId,
+                            'variant_gid' => $variant['id'],
+                            'product_id' => $productNumericId,
+                            'product_gid' => $product['id'],
+                            'product_title' => $product['title'],
+                            'product_handle' => $product['handle'] ?? '',
+                            'product_status' => $product['status'] ?? 'ACTIVE',
+                            'product_tags' => $productTagsString,
+                            'pim_sync' => $pimSync,
+                            'variant_title' => $variant['title'],
+                            'sku' => $variant['sku'] ?? '',
+                            'barcode' => $variant['barcode'] ?? '',
+                            'total_inventory' => $variant['inventoryQuantity'] ?? 0,
+                            'inventory_item_id' => $inventoryItemId,
+                        ];
+                    }
+                }
+
+                $hasNextPage = $pageInfo['hasNextPage'] ?? false;
+                $cursor = $pageInfo['endCursor'] ?? null;
+
+                Log::info("Products page {$pageCount} fetched:", [
+                    'products_in_page' => count($products),
+                    'total_variants_so_far' => count($allVariants),
+                    'has_next_page' => $hasNextPage
+                ]);
+
+                if (!$fetchAll) {
+                    break;
+                }
+
+            } catch (RequestException $e) {
+                Log::error('Shopify API request failed:', [
+                    'message' => $e->getMessage(),
+                    'page' => $pageCount
+                ]);
+                break;
+            }
+        }
+
+        Log::info('===== VARIANT FETCH BY TAG COMPLETE =====', [
+            'tag' => $tag,
+            'total_variants' => count($allVariants),
+            'pages_fetched' => $pageCount
+        ]);
+
+        return [
+            'variants' => $allVariants,
+            'pageInfo' => [
+                'hasNextPage' => $hasNextPage,
+                'endCursor' => $cursor
+            ]
+        ];
+    }
+
+    /**
      * Update product metafield
      */
     public function updateProductMetafield($productGid, $namespace, $key, $value)
