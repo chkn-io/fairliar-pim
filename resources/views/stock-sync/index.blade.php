@@ -1339,15 +1339,44 @@ document.getElementById('bulkTagForm').addEventListener('submit', function(e) {
     const inverse = document.getElementById('bulk_inverse').checked;
     
     if (!tag) {
-        alert('Please enter a tag');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Tag Required',
+            text: 'Please enter a tag',
+            confirmButtonColor: '#3085d6'
+        });
         return;
     }
     
-    if (!confirm(`Are you sure you want to bulk update all variants with tag "${tag}"${inverse ? ' (INVERSE - products WITHOUT this tag)' : ''}?\n\nAction: ${status.toUpperCase()}`)) {
-        return;
+    // Get action display text
+    let actionText = '';
+    switch(status) {
+        case 'include': actionText = '✅ Include in Sync (true)'; break;
+        case 'exclude': actionText = '❌ Exclude from Sync (false)'; break;
+        case 'unset': actionText = '⚪ Unset (empty)'; break;
     }
     
-    startBulkUpdate(tag, status, inverse);
+    Swal.fire({
+        icon: 'question',
+        title: 'Confirm Bulk Update',
+        html: `
+            <div class="text-start">
+                <p><strong>Tag:</strong> ${tag} ${inverse ? '<span class="badge bg-warning">INVERSE</span>' : ''}</p>
+                <p><strong>Action:</strong> ${actionText}</p>
+                ${inverse ? '<p class="text-warning"><small>⚠️ This will update products WITHOUT this tag</small></p>' : ''}
+                <p class="text-muted"><small>This action will update all matching variants.</small></p>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, proceed!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            startBulkUpdate(tag, status, inverse);
+        }
+    });
 });
 
 function startBulkUpdate(tag, status, inverse) {
@@ -1492,10 +1521,21 @@ function startBulkUpdate(tag, status, inverse) {
 }
 
 function cancelBulkUpdate() {
-    if (confirm('Are you sure you want to cancel the bulk update?')) {
-        addBulkLogEntry('warning', '⚠️ Cancelled by user');
-        stopBulkUpdate();
-    }
+    Swal.fire({
+        icon: 'warning',
+        title: 'Cancel Bulk Update?',
+        text: 'Are you sure you want to stop the bulk update process?',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, cancel it',
+        cancelButtonText: 'No, continue'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            addBulkLogEntry('warning', '⚠️ Cancelled by user');
+            stopBulkUpdate();
+        }
+    });
 }
 
 function stopBulkUpdate() {
