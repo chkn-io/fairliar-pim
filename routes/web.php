@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/stock-sync/get-warehouse-stock-by-sku', [App\Http\Controllers\StockSyncController::class, 'getWarehouseStockBySku'])->name('stock-sync.get-warehouse-stock-by-sku');
     Route::post('/stock-sync/toggle-pim-sync', [App\Http\Controllers\StockSyncController::class, 'togglePimSync'])->name('stock-sync.toggle-pim-sync');
     Route::post('/stock-sync/sync-stock', [App\Http\Controllers\StockSyncController::class, 'syncStock'])->name('stock-sync.sync-stock');
+    Route::get('/stock-sync/bulk-update-by-tag', [App\Http\Controllers\StockSyncController::class, 'bulkUpdateByTag'])->name('stock-sync.bulk-update-by-tag');
     
     // Warehouse sync endpoint (admin only)
     Route::middleware('admin')->post('/warehouse/sync', [App\Http\Controllers\StockSyncController::class, 'syncWarehouse'])->name('warehouse.sync');

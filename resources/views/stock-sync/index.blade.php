@@ -25,8 +25,17 @@
 
     <!-- Search and Filter Form -->
     <div class="card mb-4">
-        <div class="card-body">
-            <form method="GET" action="{{ route('stock-sync.index') }}" id="filterForm">
+        <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#searchFilterCollapse" aria-expanded="false">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-search me-2"></i>Search & Filters
+                </h6>
+                <i class="bi bi-chevron-down" id="searchFilterIcon"></i>
+            </div>
+        </div>
+        <div class="collapse" id="searchFilterCollapse">
+            <div class="card-body">
+                <form method="GET" action="{{ route('stock-sync.index') }}" id="filterForm">
                 <div class="row g-3">
                     <div class="col-12 col-md-3">
                         <label for="search" class="form-label">Search</label>
@@ -93,10 +102,105 @@
                     </div>
                 </div>
             </form>
+            </div>
         </div>
     </div>
 
-   
+    <!-- Bulk Update by Tag -->
+    <div class="card mb-4">
+        <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#bulkUpdateCollapse" aria-expanded="false">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-tags me-2"></i>Bulk Update by Tag
+                </h6>
+                <i class="bi bi-chevron-down" id="bulkUpdateIcon"></i>
+            </div>
+        </div>
+        <div class="collapse" id="bulkUpdateCollapse">
+            <div class="card-body">
+            <form id="bulkTagForm">
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-md-3">
+                        <label for="bulk_tag" class="form-label">Product Tag *</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="bulk_tag" 
+                               name="bulk_tag" 
+                               placeholder="e.g. 26ss"
+                               required>
+                    </div>
+                    
+                    <div class="col-12 col-md-3">
+                        <label for="bulk_status" class="form-label">Action *</label>
+                        <select class="form-select" id="bulk_status" name="bulk_status" required>
+                            <option value="include">✅ Include in Sync (true)</option>
+                            <option value="exclude">❌ Exclude from Sync (false)</option>
+                            <option value="unset">⚪ Unset (empty)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-12 col-md-2">
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="bulk_inverse" 
+                                   name="bulk_inverse">
+                            <label class="form-check-label" for="bulk_inverse">
+                                Inverse (products WITHOUT this tag)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="col-12 col-md-4">
+                        <button type="submit" class="btn btn-primary w-100" id="bulk_submit_btn">
+                            🚀 Start Bulk Update
+                        </button>
+                        <button type="button" class="btn btn-danger w-100 d-none" id="bulk_cancel_btn" onclick="cancelBulkUpdate()">
+                            🛑 Cancel
+                        </button>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- Progress Display -->
+            <div id="bulkProgressContainer" class="mt-4 d-none">
+                <div class="progress mb-3" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         id="bulkProgressBar"
+                         role="progressbar" 
+                         style="width: 0%"
+                         aria-valuenow="0" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        0 / 0
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Processing Log</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearBulkLog()">Clear</button>
+                    </div>
+                    <div class="card-body p-2" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;" id="bulkLog">
+                        <!-- Log entries will be added here -->
+                    </div>
+                </div>
+                
+                <!-- Summary -->
+                <div id="bulkSummary" class="mt-3 d-none">
+                    <div class="alert alert-info">
+                        <strong>Summary:</strong>
+                        <span id="bulkSummaryText"></span>
+                    </div>
+                    <div id="bulkFailedList" class="d-none">
+                        <h6>Failed Variants:</h6>
+                        <ul id="bulkFailedItems"></ul>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Results Table -->
     @if(count($syncData) > 0)
@@ -1205,5 +1309,279 @@ code {
     color: #d63384;
     font-size: 0.875em;
 }
+
+/* Collapsible card header styles */
+.card-header[data-bs-toggle="collapse"] {
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.card-header[data-bs-toggle="collapse"]:hover {
+    background-color: rgba(0,0,0,.03);
+}
+
+.card-header i.bi-chevron-down,
+.card-header i.bi-chevron-up {
+    transition: transform 0.3s ease;
+}
 </style>
+
+<script>
+// Bulk Update by Tag functionality
+let bulkEventSource = null;
+let bulkStartTime = null;
+
+document.getElementById('bulkTagForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const tag = document.getElementById('bulk_tag').value.trim();
+    const status = document.getElementById('bulk_status').value;
+    const inverse = document.getElementById('bulk_inverse').checked;
+    
+    if (!tag) {
+        alert('Please enter a tag');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to bulk update all variants with tag "${tag}"${inverse ? ' (INVERSE - products WITHOUT this tag)' : ''}?\n\nAction: ${status.toUpperCase()}`)) {
+        return;
+    }
+    
+    startBulkUpdate(tag, status, inverse);
+});
+
+function startBulkUpdate(tag, status, inverse) {
+    // Reset UI
+    bulkStartTime = Date.now();
+    document.getElementById('bulkProgressContainer').classList.remove('d-none');
+    document.getElementById('bulkSummary').classList.add('d-none');
+    document.getElementById('bulkFailedList').classList.add('d-none');
+    document.getElementById('bulkLog').innerHTML = '';
+    document.getElementById('bulkProgressBar').style.width = '0%';
+    document.getElementById('bulkProgressBar').textContent = '0 / 0';
+    document.getElementById('bulkProgressBar').setAttribute('aria-valuenow', '0');
+    
+    // Toggle buttons
+    document.getElementById('bulk_submit_btn').classList.add('d-none');
+    document.getElementById('bulk_cancel_btn').classList.remove('d-none');
+    document.getElementById('bulk_tag').disabled = true;
+    document.getElementById('bulk_status').disabled = true;
+    document.getElementById('bulk_inverse').disabled = true;
+    
+    addBulkLogEntry('info', `Starting bulk update for tag: ${tag} (${inverse ? 'INVERSE' : 'NORMAL'})`);
+    addBulkLogEntry('info', `Action: ${status.toUpperCase()}`);
+    
+    // Create EventSource for streaming
+    const url = new URL('{{ route("stock-sync.bulk-update-by-tag") }}', window.location.origin);
+    url.searchParams.append('tag', tag);
+    url.searchParams.append('status', status);
+    url.searchParams.append('inverse', inverse ? '1' : '0');
+    
+    bulkEventSource = new EventSource(url.toString());
+    
+    bulkEventSource.addEventListener('start', function(e) {
+        const data = JSON.parse(e.data);
+        addBulkLogEntry('info', `Parameters confirmed - Tag: ${data.tag}, Status: ${data.status}, Inverse: ${data.inverse}`);
+    });
+    
+    bulkEventSource.addEventListener('info', function(e) {
+        const data = JSON.parse(e.data);
+        addBulkLogEntry('info', data.message);
+    });
+    
+    bulkEventSource.addEventListener('total', function(e) {
+        const data = JSON.parse(e.data);
+        addBulkLogEntry('success', `Found ${data.count} variants to process`);
+        document.getElementById('bulkProgressBar').setAttribute('aria-valuemax', data.count);
+    });
+    
+    bulkEventSource.addEventListener('progress', function(e) {
+        const data = JSON.parse(e.data);
+        const percent = Math.round((data.current / data.total) * 100);
+        
+        // Update progress bar
+        document.getElementById('bulkProgressBar').style.width = percent + '%';
+        document.getElementById('bulkProgressBar').textContent = `${data.current} / ${data.total}`;
+        document.getElementById('bulkProgressBar').setAttribute('aria-valuenow', data.current);
+        
+        // Add log entry
+        addBulkLogEntry('progress', `[${data.current}/${data.total}] Processing: ${data.sku} - ${data.product} (${data.variant})`);
+    });
+    
+    bulkEventSource.addEventListener('success', function(e) {
+        const data = JSON.parse(e.data);
+        addBulkLogEntry('success', `✅ [${data.current}] Success: ${data.sku}`);
+    });
+    
+    bulkEventSource.addEventListener('failed', function(e) {
+        const data = JSON.parse(e.data);
+        addBulkLogEntry('error', `❌ [${data.current}] Failed: ${data.sku} - ${data.reason || 'Unknown error'}`);
+    });
+    
+    bulkEventSource.addEventListener('done', function(e) {
+        const data = JSON.parse(e.data);
+        const duration = ((Date.now() - bulkStartTime) / 1000).toFixed(2);
+        
+        addBulkLogEntry('success', `✅ Completed in ${duration}s`);
+        addBulkLogEntry('info', `Total: ${data.total} | Success: ${data.success} | Failed: ${data.failed}`);
+        
+        // Show summary
+        document.getElementById('bulkSummary').classList.remove('d-none');
+        document.getElementById('bulkSummaryText').textContent = 
+            `Total: ${data.total} | Success: ${data.success} | Failed: ${data.failed} | Duration: ${duration}s`;
+        
+        // Show failed variants if any
+        if (data.failed > 0 && data.failedVariants && data.failedVariants.length > 0) {
+            document.getElementById('bulkFailedList').classList.remove('d-none');
+            const failedList = document.getElementById('bulkFailedItems');
+            failedList.innerHTML = '';
+            data.failedVariants.forEach(variant => {
+                const li = document.createElement('li');
+                li.textContent = `${variant.sku} - ${variant.product} (${variant.variant})`;
+                if (variant.reason) {
+                    li.textContent += ` - Reason: ${variant.reason}`;
+                }
+                failedList.appendChild(li);
+            });
+        }
+        
+        // Update progress bar to green
+        const progressBar = document.getElementById('bulkProgressBar');
+        progressBar.classList.remove('progress-bar-striped', 'progress-bar-animated');
+        if (data.failed === 0) {
+            progressBar.classList.remove('bg-primary');
+            progressBar.classList.add('bg-success');
+        } else {
+            progressBar.classList.remove('bg-primary');
+            progressBar.classList.add('bg-warning');
+        }
+        
+        stopBulkUpdate();
+    });
+    
+    bulkEventSource.addEventListener('error', function(e) {
+        let errorMsg = 'Unknown error occurred';
+        if (e.data) {
+            try {
+                const data = JSON.parse(e.data);
+                errorMsg = data.message || errorMsg;
+            } catch (err) {
+                // Can't parse, use default
+            }
+        }
+        
+        addBulkLogEntry('error', `❌ Error: ${errorMsg}`);
+        
+        // Update progress bar to red
+        const progressBar = document.getElementById('bulkProgressBar');
+        progressBar.classList.remove('progress-bar-striped', 'progress-bar-animated', 'bg-primary');
+        progressBar.classList.add('bg-danger');
+        
+        stopBulkUpdate();
+    });
+    
+    bulkEventSource.onerror = function(e) {
+        if (bulkEventSource && bulkEventSource.readyState === EventSource.CLOSED) {
+            // Connection closed naturally (after 'done' event) - this is expected
+            return;
+        }
+        
+        addBulkLogEntry('error', '❌ Connection error or stream ended unexpectedly');
+        stopBulkUpdate();
+    };
+}
+
+function cancelBulkUpdate() {
+    if (confirm('Are you sure you want to cancel the bulk update?')) {
+        addBulkLogEntry('warning', '⚠️ Cancelled by user');
+        stopBulkUpdate();
+    }
+}
+
+function stopBulkUpdate() {
+    if (bulkEventSource) {
+        bulkEventSource.close();
+        bulkEventSource = null;
+    }
+    
+    // Re-enable form
+    document.getElementById('bulk_submit_btn').classList.remove('d-none');
+    document.getElementById('bulk_cancel_btn').classList.add('d-none');
+    document.getElementById('bulk_tag').disabled = false;
+    document.getElementById('bulk_status').disabled = false;
+    document.getElementById('bulk_inverse').disabled = false;
+}
+
+function addBulkLogEntry(type, message) {
+    const logContainer = document.getElementById('bulkLog');
+    const entry = document.createElement('div');
+    entry.className = 'mb-1';
+    
+    const timestamp = new Date().toLocaleTimeString();
+    let badge = '';
+    
+    switch(type) {
+        case 'success':
+            badge = '<span class="badge bg-success me-2">✓</span>';
+            break;
+        case 'error':
+            badge = '<span class="badge bg-danger me-2">✗</span>';
+            break;
+        case 'warning':
+            badge = '<span class="badge bg-warning me-2">⚠</span>';
+            break;
+        case 'info':
+            badge = '<span class="badge bg-info me-2">ℹ</span>';
+            break;
+        case 'progress':
+            badge = '<span class="badge bg-secondary me-2">→</span>';
+            break;
+    }
+    
+    entry.innerHTML = `${badge}<span class="text-muted">[${timestamp}]</span> ${escapeHtml(message)}`;
+    logContainer.appendChild(entry);
+    
+    // Auto-scroll to bottom
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function clearBulkLog() {
+    document.getElementById('bulkLog').innerHTML = '';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Collapse icon toggle functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const searchFilterCollapse = document.getElementById('searchFilterCollapse');
+    const bulkUpdateCollapse = document.getElementById('bulkUpdateCollapse');
+    
+    // Search filter collapse toggle
+    searchFilterCollapse.addEventListener('show.bs.collapse', function () {
+        document.getElementById('searchFilterIcon').classList.remove('bi-chevron-down');
+        document.getElementById('searchFilterIcon').classList.add('bi-chevron-up');
+    });
+    
+    searchFilterCollapse.addEventListener('hide.bs.collapse', function () {
+        document.getElementById('searchFilterIcon').classList.remove('bi-chevron-up');
+        document.getElementById('searchFilterIcon').classList.add('bi-chevron-down');
+    });
+    
+    // Bulk update collapse toggle
+    bulkUpdateCollapse.addEventListener('show.bs.collapse', function () {
+        document.getElementById('bulkUpdateIcon').classList.remove('bi-chevron-down');
+        document.getElementById('bulkUpdateIcon').classList.add('bi-chevron-up');
+    });
+    
+    bulkUpdateCollapse.addEventListener('hide.bs.collapse', function () {
+        document.getElementById('bulkUpdateIcon').classList.remove('bi-chevron-up');
+        document.getElementById('bulkUpdateIcon').classList.add('bi-chevron-down');
+    });
+});
+</script>
+
 @endsection

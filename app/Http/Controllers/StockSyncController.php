@@ -627,4 +627,150 @@ class StockSyncController extends Controller
             'hasNextPage' => $hasMore && (count($filteredVariants) >= $desiredCount)
         ];
     }
+
+    /**
+     * Bulk update PIM sync status by tag with real-time streaming output
+     */
+    public function bulkUpdateByTag(Request $request)
+    {
+        $request->validate([
+            'tag' => 'required|string',
+            'status' => 'required|in:include,exclude,unset',
+            'inverse' => 'sometimes|boolean',
+        ]);
+
+        $tag = $request->input('tag');
+        $status = $request->input('status');
+        $inverse = $request->input('inverse', false);
+
+        // Set response headers for streaming
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('Connection: keep-alive');
+        header('X-Accel-Buffering: no'); // Disable nginx buffering
+
+        // Disable output buffering
+        if (ob_get_level()) ob_end_clean();
+
+        // Send initial message
+        $this->sendStreamMessage('start', [
+            'tag' => $tag,
+            'status' => $status,
+            'inverse' => $inverse
+        ]);
+
+        try {
+            // Map status to metafield value
+            $metafieldValue = 'n/a';
+            if ($status === 'include') {
+                $metafieldValue = 'true';
+            } elseif ($status === 'exclude') {
+                $metafieldValue = 'false';
+            }
+
+            $this->sendStreamMessage('info', ['message' => 'Fetching variants...']);
+
+            // Fetch variants by tag
+            $result = $this->shopifyService->getVariantsByProductTag($tag, true, $inverse);
+            $variants = $result['variants'];
+
+            if (empty($variants)) {
+                $this->sendStreamMessage('error', ['message' => 'No variants found']);
+                $this->sendStreamMessage('done', ['success' => 0, 'failed' => 0, 'total' => 0]);
+                return;
+            }
+
+            $total = count($variants);
+            $this->sendStreamMessage('total', ['count' => $total]);
+
+            $successCount = 0;
+            $failedCount = 0;
+            $failedVariants = [];
+
+            // Process each variant
+            foreach ($variants as $index => $variant) {
+                $num = $index + 1;
+                $sku = $variant['sku'] ?: 'NO-SKU';
+                $productTitle = $variant['product_title'];
+                $variantTitle = $variant['variant_title'];
+
+                // Send progress update
+                $this->sendStreamMessage('progress', [
+                    'current' => $num,
+                    'total' => $total,
+                    'sku' => $sku,
+                    'product' => $productTitle,
+                    'variant' => $variantTitle
+                ]);
+
+                try {
+                    $success = $this->shopifyService->updateVariantMetafield(
+                        $variant['variant_gid'],
+                        'custom',
+                        'pim_sync',
+                        $metafieldValue
+                    );
+
+                    if ($success) {
+                        $successCount++;
+                        $this->sendStreamMessage('success', [
+                            'current' => $num,
+                            'sku' => $sku
+                        ]);
+                    } else {
+                        $failedCount++;
+                        $failedVariants[] = [
+                            'sku' => $sku,
+                            'product' => $productTitle,
+                            'variant' => $variantTitle
+                        ];
+                        $this->sendStreamMessage('failed', [
+                            'current' => $num,
+                            'sku' => $sku,
+                            'reason' => 'API returned false'
+                        ]);
+                    }
+
+                    // Small delay to avoid rate limiting
+                    usleep(50000); // 50ms
+
+                } catch (\Exception $e) {
+                    $failedCount++;
+                    $failedVariants[] = [
+                        'sku' => $sku,
+                        'product' => $productTitle,
+                        'variant' => $variantTitle,
+                        'reason' => $e->getMessage()
+                    ];
+                    $this->sendStreamMessage('failed', [
+                        'current' => $num,
+                        'sku' => $sku,
+                        'reason' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // Send completion message
+            $this->sendStreamMessage('done', [
+                'success' => $successCount,
+                'failed' => $failedCount,
+                'total' => $total,
+                'failedVariants' => $failedVariants
+            ]);
+
+        } catch (\Exception $e) {
+            $this->sendStreamMessage('error', ['message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Send a Server-Sent Event message
+     */
+    private function sendStreamMessage($event, $data)
+    {
+        echo "event: {$event}\n";
+        echo "data: " . json_encode($data) . "\n\n";
+        if (ob_get_level()) ob_flush();
+        flush();
+    }
 }
