@@ -176,6 +176,19 @@
                     </div>
                 </div>
                 
+                <!-- Continue Button (shown after errors) -->
+                <div id="bulkContinueContainer" class="mb-3 d-none">
+                    <div class="alert alert-warning d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Process Interrupted</strong> - Connection error occurred at item <span id="bulkLastProcessed">0</span>
+                        </span>
+                        <button class="btn btn-warning" onclick="continueBulkUpdate()">
+                            <i class="fas fa-play"></i> Continue from where it stopped
+                        </button>
+                    </div>
+                </div>
+                
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span>Processing Log</span>
@@ -1330,6 +1343,11 @@ code {
 // Bulk Update by Tag functionality
 let bulkEventSource = null;
 let bulkStartTime = null;
+let bulkLastProcessed = 0;
+let bulkCurrentTag = '';
+let bulkCurrentStatus = '';
+let bulkCurrentInverse = false;
+let bulkTotalCount = 0;
 
 document.getElementById('bulkTagForm').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -1374,21 +1392,31 @@ document.getElementById('bulkTagForm').addEventListener('submit', function(e) {
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
-            startBulkUpdate(tag, status, inverse);
+            // Store current parameters
+            bulkCurrentTag = tag;
+            bulkCurrentStatus = status;
+            bulkCurrentInverse = inverse;
+            bulkLastProcessed = 0;
+            
+            startBulkUpdate(tag, status, inverse, 0);
         }
     });
 });
 
-function startBulkUpdate(tag, status, inverse) {
-    // Reset UI
-    bulkStartTime = Date.now();
+function startBulkUpdate(tag, status, inverse, startIndex = 0) {
+    // Reset UI only if starting from beginning
+    if (startIndex === 0) {
+        bulkStartTime = Date.now();
+        document.getElementById('bulkLog').innerHTML = '';
+        document.getElementById('bulkProgressBar').style.width = '0%';
+        document.getElementById('bulkProgressBar').textContent = '0 / 0';
+        document.getElementById('bulkProgressBar').setAttribute('aria-valuenow', '0');
+        document.getElementById('bulkSummary').classList.add('d-none');
+        document.getElementById('bulkFailedList').classList.add('d-none');
+    }
+    
     document.getElementById('bulkProgressContainer').classList.remove('d-none');
-    document.getElementById('bulkSummary').classList.add('d-none');
-    document.getElementById('bulkFailedList').classList.add('d-none');
-    document.getElementById('bulkLog').innerHTML = '';
-    document.getElementById('bulkProgressBar').style.width = '0%';
-    document.getElementById('bulkProgressBar').textContent = '0 / 0';
-    document.getElementById('bulkProgressBar').setAttribute('aria-valuenow', '0');
+    document.getElementById('bulkContinueContainer').classList.add('d-none');
     
     // Toggle buttons
     document.getElementById('bulk_submit_btn').classList.add('d-none');
@@ -1397,14 +1425,19 @@ function startBulkUpdate(tag, status, inverse) {
     document.getElementById('bulk_status').disabled = true;
     document.getElementById('bulk_inverse').disabled = true;
     
-    addBulkLogEntry('info', `Starting bulk update for tag: ${tag} (${inverse ? 'INVERSE' : 'NORMAL'})`);
-    addBulkLogEntry('info', `Action: ${status.toUpperCase()}`);
+    if (startIndex === 0) {
+        addBulkLogEntry('info', `Starting bulk update for tag: ${tag} (${inverse ? 'INVERSE' : 'NORMAL'})`);
+        addBulkLogEntry('info', `Action: ${status.toUpperCase()}`);
+    } else {
+        addBulkLogEntry('info', `Resuming from item ${startIndex + 1}...`);
+    }
     
     // Create EventSource for streaming
     const url = new URL('{{ route("stock-sync.bulk-update-by-tag") }}', window.location.origin);
     url.searchParams.append('tag', tag);
     url.searchParams.append('status', status);
     url.searchParams.append('inverse', inverse ? '1' : '0');
+    url.searchParams.append('start_index', startIndex);
     
     bulkEventSource = new EventSource(url.toString());
     
@@ -1420,6 +1453,7 @@ function startBulkUpdate(tag, status, inverse) {
     
     bulkEventSource.addEventListener('total', function(e) {
         const data = JSON.parse(e.data);
+        bulkTotalCount = data.count;
         addBulkLogEntry('success', `Found ${data.count} variants to process`);
         document.getElementById('bulkProgressBar').setAttribute('aria-valuemax', data.count);
     });
@@ -1427,6 +1461,9 @@ function startBulkUpdate(tag, status, inverse) {
     bulkEventSource.addEventListener('progress', function(e) {
         const data = JSON.parse(e.data);
         const percent = Math.round((data.current / data.total) * 100);
+        
+        // Track last processed index (0-based)
+        bulkLastProcessed = data.current - 1;
         
         // Update progress bar
         document.getElementById('bulkProgressBar').style.width = percent + '%';
@@ -1523,6 +1560,14 @@ function startBulkUpdate(tag, status, inverse) {
         }
         
         addBulkLogEntry('error', '❌ Connection error or stream ended unexpectedly');
+        
+        // Show continue button if we're not finished
+        if (bulkLastProcessed < bulkTotalCount - 1) {
+            document.getElementById('bulkLastProcessed').textContent = bulkLastProcessed + 1;
+            document.getElementById('bulkContinueContainer').classList.remove('d-none');
+            addBulkLogEntry('warning', `⚠ You can continue from item ${bulkLastProcessed + 2}. Click the Continue button above.`);
+        }
+        
         stopBulkUpdate();
     };
 }
@@ -1557,6 +1602,18 @@ function stopBulkUpdate() {
     document.getElementById('bulk_tag').disabled = false;
     document.getElementById('bulk_status').disabled = false;
     document.getElementById('bulk_inverse').disabled = false;
+}
+
+function continueBulkUpdate() {
+    // Hide the continue button
+    document.getElementById('bulkContinueContainer').classList.add('d-none');
+    
+    // Resume from where we left off
+    const startIndex = bulkLastProcessed + 1;
+    addBulkLogEntry('info', `▶️ Continuing bulk update from item ${startIndex + 1}...`);
+    
+    // Restart the bulk update from the last processed index
+    startBulkUpdate(bulkCurrentTag, bulkCurrentStatus, bulkCurrentInverse, startIndex);
 }
 
 function addBulkLogEntry(type, message) {

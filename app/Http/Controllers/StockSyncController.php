@@ -637,11 +637,13 @@ class StockSyncController extends Controller
             'tag' => 'required|string',
             'status' => 'required|in:include,exclude,unset',
             'inverse' => 'sometimes|boolean',
+            'start_index' => 'sometimes|integer|min:0',
         ]);
 
         $tag = $request->input('tag');
         $status = $request->input('status');
         $inverse = $request->input('inverse', false);
+        $startIndex = (int) $request->input('start_index', 0);
 
         // Set response headers for streaming
         header('Content-Type: text/event-stream');
@@ -656,7 +658,8 @@ class StockSyncController extends Controller
         $this->sendStreamMessage('start', [
             'tag' => $tag,
             'status' => $status,
-            'inverse' => $inverse
+            'inverse' => $inverse,
+            'start_index' => $startIndex
         ]);
 
         try {
@@ -672,16 +675,23 @@ class StockSyncController extends Controller
 
             // Fetch variants by tag
             $result = $this->shopifyService->getVariantsByProductTag($tag, true, $inverse);
-            $variants = $result['variants'];
+            $allVariants = $result['variants'];
 
-            if (empty($variants)) {
+            if (empty($allVariants)) {
                 $this->sendStreamMessage('error', ['message' => 'No variants found']);
                 $this->sendStreamMessage('done', ['success' => 0, 'failed' => 0, 'total' => 0]);
                 return;
             }
 
-            $total = count($variants);
-            $this->sendStreamMessage('total', ['count' => $total]);
+            // Slice the variants array if resuming from a specific index
+            $totalOriginal = count($allVariants);
+            if ($startIndex > 0) {
+                $allVariants = array_slice($allVariants, $startIndex, null, false);
+                $this->sendStreamMessage('info', ['message' => "Resuming from item " . ($startIndex + 1) . " of {$totalOriginal}"]);
+            }
+
+            $total = count($allVariants);
+            $this->sendStreamMessage('total', ['count' => $totalOriginal]);
 
             $successCount = 0;
             $failedCount = 0;
@@ -690,18 +700,20 @@ class StockSyncController extends Controller
             $retryDelay = 2;
 
             // Process each variant
-            foreach ($variants as $index => $variant) {
-                $num = $index + 1;
+            foreach ($allVariants as $index => $variant) {
+                // Calculate the original position (accounting for start_index)
+                $originalIndex = $startIndex + $index;
+                $num = $originalIndex + 1;
                 
                 try {
                     $sku = $variant['sku'] ?: 'NO-SKU';
                     $productTitle = $variant['product_title'];
                     $variantTitle = $variant['variant_title'];
 
-                    // Send progress update
+                    // Send progress update with original position
                     $this->sendStreamMessage('progress', [
                         'current' => $num,
-                        'total' => $total,
+                        'total' => $totalOriginal,
                         'sku' => $sku,
                         'product' => $productTitle,
                         'variant' => $variantTitle
