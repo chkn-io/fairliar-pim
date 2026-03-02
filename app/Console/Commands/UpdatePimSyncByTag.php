@@ -123,37 +123,63 @@ class UpdatePimSyncByTag extends Command
         foreach ($allVariants as $index => $variant) {
             $num = $index + 1;
             $total = count($allVariants);
-            $sku = $variant['sku'] ?: 'NO-SKU';
-            $productTitle = $variant['product_title'];
-            $variantTitle = $variant['variant_title'];
             
-            // Display progress
-            $timestamp = date('g:i:s A');
-            $this->line("→[{$timestamp}] [{$num}/{$total}] Processing: {$sku} - {$productTitle} ({$variantTitle})");
-            
-            // Try updating with retries
-            $result = $this->updateVariantWithRetry(
-                $variant['variant_gid'],
-                $metafieldValue,
-                $maxRetries,
-                $retryDelay,
-                $num
-            );
-            
-            $timestamp = date('g:i:s A');
-            if ($result['success']) {
-                $successCount++;
-                $this->info("✓[{$timestamp}] ✅ [{$num}] Success: {$sku}");
-            } else {
+            try {
+                $sku = $variant['sku'] ?: 'NO-SKU';
+                $productTitle = $variant['product_title'];
+                $variantTitle = $variant['variant_title'];
+                
+                // Display progress
+                $timestamp = date('g:i:s A');
+                $this->line("→[{$timestamp}] [{$num}/{$total}] Processing: {$sku} - {$productTitle} ({$variantTitle})");
+                
+                // Try updating with retries
+                $result = $this->updateVariantWithRetry(
+                    $variant['variant_gid'],
+                    $metafieldValue,
+                    $maxRetries,
+                    $retryDelay,
+                    $num
+                );
+                
+                $timestamp = date('g:i:s A');
+                if ($result['success']) {
+                    $successCount++;
+                    $this->info("✓[{$timestamp}] ✅ [{$num}] Success: {$sku}");
+                } else {
+                    $failedCount++;
+                    $failedVariants[] = [
+                        'sku' => $sku,
+                        'product' => $productTitle,
+                        'variant' => $variantTitle,
+                        'reason' => $result['error']
+                    ];
+                    $this->error("✗[{$timestamp}] ❌ [{$num}] Failed after {$result['attempts']} attempts: {$sku}");
+                    $this->error("✗[{$timestamp}] ❌ {$result['error']}");
+                    $this->warn("⏭️  Skipping to next variant...");
+                }
+                
+            } catch (\Throwable $e) {
+                // Catch ANY error (including fatal errors) to ensure we continue
+                $timestamp = date('g:i:s A');
+                $sku = $variant['sku'] ?? 'UNKNOWN-SKU';
                 $failedCount++;
                 $failedVariants[] = [
                     'sku' => $sku,
-                    'product' => $productTitle,
-                    'variant' => $variantTitle,
-                    'reason' => $result['error']
+                    'product' => $variant['product_title'] ?? 'Unknown',
+                    'variant' => $variant['variant_title'] ?? 'Unknown',
+                    'reason' => 'Critical error: ' . $e->getMessage()
                 ];
-                $this->error("✗[{$timestamp}] ❌ [{$num}] Failed after {$result['attempts']} attempts: {$sku}");
-                $this->error("✗[{$timestamp}] ❌ {$result['error']}");
+                $this->error("✗[{$timestamp}] ❌ [{$num}] Critical error for {$sku}: " . $e->getMessage());
+                $this->warn("⏭️  Skipping to next variant...");
+                
+                // Log the full exception for debugging
+                Log::error("Critical error in UpdatePimSyncByTag", [
+                    'variant_gid' => $variant['variant_gid'] ?? null,
+                    'sku' => $sku,
+                    'exception' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
             }
             
             // Small delay to avoid rate limiting
@@ -236,15 +262,15 @@ class UpdatePimSyncByTag extends Command
                         $lastError = "HTTP {$statusCode}: " . $e->getMessage();
                     }
                 } else {
-                    $lastError = 'Request error: ' . $e->getMessage();
+                    $lastError = 'Request error or stream ended unexpectedly';
                 }
                 
             } catch (\GuzzleHttp\Exception\TransferException $e) {
                 // Stream errors, transfer issues
-                $lastError = 'Transfer error: ' . $e->getMessage();
+                $lastError = 'Transfer error or stream ended unexpectedly';
                 
-            } catch (\Exception $e) {
-                // Any other exception
+            } catch (\Throwable $e) {
+                // Any other exception (catch Throwable instead of Exception to catch fatal errors)
                 $lastError = 'Unknown error: ' . $e->getMessage();
             }
             

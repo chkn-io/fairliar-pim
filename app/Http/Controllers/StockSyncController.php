@@ -692,47 +692,74 @@ class StockSyncController extends Controller
             // Process each variant
             foreach ($variants as $index => $variant) {
                 $num = $index + 1;
-                $sku = $variant['sku'] ?: 'NO-SKU';
-                $productTitle = $variant['product_title'];
-                $variantTitle = $variant['variant_title'];
+                
+                try {
+                    $sku = $variant['sku'] ?: 'NO-SKU';
+                    $productTitle = $variant['product_title'];
+                    $variantTitle = $variant['variant_title'];
 
-                // Send progress update
-                $this->sendStreamMessage('progress', [
-                    'current' => $num,
-                    'total' => $total,
-                    'sku' => $sku,
-                    'product' => $productTitle,
-                    'variant' => $variantTitle
-                ]);
-
-                // Try updating with retries
-                $result = $this->updateVariantMetafieldWithRetry(
-                    $variant['variant_gid'],
-                    $metafieldValue,
-                    $maxRetries,
-                    $retryDelay,
-                    $num,
-                    $sku
-                );
-
-                if ($result['success']) {
-                    $successCount++;
-                    $this->sendStreamMessage('success', [
+                    // Send progress update
+                    $this->sendStreamMessage('progress', [
                         'current' => $num,
-                        'sku' => $sku
+                        'total' => $total,
+                        'sku' => $sku,
+                        'product' => $productTitle,
+                        'variant' => $variantTitle
                     ]);
-                } else {
+
+                    // Try updating with retries
+                    $result = $this->updateVariantMetafieldWithRetry(
+                        $variant['variant_gid'],
+                        $metafieldValue,
+                        $maxRetries,
+                        $retryDelay,
+                        $num,
+                        $sku
+                    );
+
+                    if ($result['success']) {
+                        $successCount++;
+                        $this->sendStreamMessage('success', [
+                            'current' => $num,
+                            'sku' => $sku
+                        ]);
+                    } else {
+                        $failedCount++;
+                        $failedVariants[] = [
+                            'sku' => $sku,
+                            'product' => $productTitle,
+                            'variant' => $variantTitle,
+                            'reason' => $result['error']
+                        ];
+                        $this->sendStreamMessage('failed', [
+                            'current' => $num,
+                            'sku' => $sku,
+                            'reason' => $result['error']
+                        ]);
+                    }
+                    
+                } catch (\Throwable $e) {
+                    // Catch ANY error to ensure we continue processing
+                    $sku = $variant['sku'] ?? 'UNKNOWN-SKU';
                     $failedCount++;
                     $failedVariants[] = [
                         'sku' => $sku,
-                        'product' => $productTitle,
-                        'variant' => $variantTitle,
-                        'reason' => $result['error']
+                        'product' => $variant['product_title'] ?? 'Unknown',
+                        'variant' => $variant['variant_title'] ?? 'Unknown',
+                        'reason' => 'Critical error: ' . $e->getMessage()
                     ];
+                    
                     $this->sendStreamMessage('failed', [
                         'current' => $num,
                         'sku' => $sku,
-                        'reason' => $result['error']
+                        'reason' => 'Critical error: ' . $e->getMessage()
+                    ]);
+                    
+                    Log::error("Critical error in bulkUpdateByTag", [
+                        'variant_gid' => $variant['variant_gid'] ?? null,
+                        'sku' => $sku,
+                        'exception' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
                 }
 
@@ -824,8 +851,8 @@ class StockSyncController extends Controller
                 // Stream errors, transfer issues
                 $lastError = 'Transfer error or stream ended unexpectedly';
                 
-            } catch (\Exception $e) {
-                // Any other exception
+            } catch (\Throwable $e) {
+                // Any other exception (catch Throwable to catch fatal errors too)
                 $lastError = 'Unknown error: ' . $e->getMessage();
             }
             

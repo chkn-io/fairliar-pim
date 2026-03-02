@@ -1719,16 +1719,30 @@ class ShopifyService
 
             return true;
 
-        } catch (RequestException $e) {
-            Log::error('Shopify variant metafield update failed:', [
+        } catch (\GuzzleHttp\Exception\ConnectException $e) {
+            Log::error('Shopify metafield update connection error:', [
                 'message' => $e->getMessage(),
-                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+                'variant_gid' => $variantGid ?? 'unknown'
             ]);
             throw $e; // Re-throw to allow retry logic in command
-        } catch (\Exception $e) {
-            Log::error('Shopify variant metafield update exception:', [
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            Log::error('Shopify metafield update request error:', [
                 'message' => $e->getMessage(),
-                'type' => get_class($e)
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+                'variant_gid' => $variantGid ?? 'unknown'
+            ]);
+            throw $e; // Re-throw to allow retry logic in command
+        } catch (\GuzzleHttp\Exception\TransferException $e) {
+            Log::error('Shopify metafield update transfer error:', [
+                'message' => $e->getMessage(),
+                'variant_gid' => $variantGid ?? 'unknown'
+            ]);
+            throw $e; // Re-throw to allow retry logic in command
+        } catch (\Throwable $e) {
+            Log::error('Shopify metafield update unexpected error:', [
+                'message' => $e->getMessage(),
+                'type' => get_class($e),
+                'variant_gid' => $variantGid ?? 'unknown'
             ]);
             throw $e; // Re-throw to allow retry logic in command
         }
