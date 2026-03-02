@@ -686,6 +686,8 @@ class StockSyncController extends Controller
             $successCount = 0;
             $failedCount = 0;
             $failedVariants = [];
+            $maxRetries = 3;
+            $retryDelay = 2;
 
             // Process each variant
             foreach ($variants as $index => $variant) {
@@ -703,51 +705,39 @@ class StockSyncController extends Controller
                     'variant' => $variantTitle
                 ]);
 
-                try {
-                    $success = $this->shopifyService->updateVariantMetafield(
-                        $variant['variant_gid'],
-                        'custom',
-                        'pim_sync',
-                        $metafieldValue
-                    );
+                // Try updating with retries
+                $result = $this->updateVariantMetafieldWithRetry(
+                    $variant['variant_gid'],
+                    $metafieldValue,
+                    $maxRetries,
+                    $retryDelay,
+                    $num,
+                    $sku
+                );
 
-                    if ($success) {
-                        $successCount++;
-                        $this->sendStreamMessage('success', [
-                            'current' => $num,
-                            'sku' => $sku
-                        ]);
-                    } else {
-                        $failedCount++;
-                        $failedVariants[] = [
-                            'sku' => $sku,
-                            'product' => $productTitle,
-                            'variant' => $variantTitle
-                        ];
-                        $this->sendStreamMessage('failed', [
-                            'current' => $num,
-                            'sku' => $sku,
-                            'reason' => 'API returned false'
-                        ]);
-                    }
-
-                    // Small delay to avoid rate limiting
-                    usleep(50000); // 50ms
-
-                } catch (\Exception $e) {
+                if ($result['success']) {
+                    $successCount++;
+                    $this->sendStreamMessage('success', [
+                        'current' => $num,
+                        'sku' => $sku
+                    ]);
+                } else {
                     $failedCount++;
                     $failedVariants[] = [
                         'sku' => $sku,
                         'product' => $productTitle,
                         'variant' => $variantTitle,
-                        'reason' => $e->getMessage()
+                        'reason' => $result['error']
                     ];
                     $this->sendStreamMessage('failed', [
                         'current' => $num,
                         'sku' => $sku,
-                        'reason' => $e->getMessage()
+                        'reason' => $result['error']
                     ]);
                 }
+
+                // Small delay to avoid rate limiting
+                usleep(50000); // 50ms
             }
 
             // Send completion message
@@ -772,5 +762,92 @@ class StockSyncController extends Controller
         echo "data: " . json_encode($data) . "\n\n";
         if (ob_get_level()) ob_flush();
         flush();
+    }
+
+    /**
+     * Update variant metafield with retry logic for connection errors
+     *
+     * @param string $variantGid
+     * @param string $metafieldValue
+     * @param int $maxRetries
+     * @param int $retryDelay
+     * @param int $itemNumber
+     * @param string $sku
+     * @return array ['success' => bool, 'error' => string|null, 'attempts' => int]
+     */
+    private function updateVariantMetafieldWithRetry($variantGid, $metafieldValue, $maxRetries, $retryDelay, $itemNumber, $sku)
+    {
+        $attempts = 0;
+        $lastError = null;
+        
+        while ($attempts <= $maxRetries) {
+            $attempts++;
+            
+            try {
+                $success = $this->shopifyService->updateVariantMetafield(
+                    $variantGid,
+                    'custom',
+                    'pim_sync',
+                    $metafieldValue
+                );
+                
+                if ($success) {
+                    return [
+                        'success' => true,
+                        'error' => null,
+                        'attempts' => $attempts
+                    ];
+                }
+                
+                $lastError = 'API returned false';
+                
+            } catch (\GuzzleHttp\Exception\ConnectException $e) {
+                // Connection error - network issue
+                $lastError = 'Connection error: ' . $e->getMessage();
+                
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                // HTTP error (includes 429 rate limiting, 5xx errors, etc.)
+                if ($e->hasResponse()) {
+                    $statusCode = $e->getResponse()->getStatusCode();
+                    if ($statusCode == 429) {
+                        $lastError = 'Rate limit exceeded';
+                        // For rate limiting, wait longer
+                        sleep($retryDelay * 2);
+                    } else {
+                        $lastError = "HTTP {$statusCode}: " . $e->getMessage();
+                    }
+                } else {
+                    $lastError = 'Request error or stream ended unexpectedly';
+                }
+                
+            } catch (\GuzzleHttp\Exception\TransferException $e) {
+                // Stream errors, transfer issues
+                $lastError = 'Transfer error or stream ended unexpectedly';
+                
+            } catch (\Exception $e) {
+                // Any other exception
+                $lastError = 'Unknown error: ' . $e->getMessage();
+            }
+            
+            // If we haven't succeeded and have retries left, wait and try again
+            if ($attempts <= $maxRetries) {
+                $this->sendStreamMessage('retry', [
+                    'current' => $itemNumber,
+                    'sku' => $sku,
+                    'attempt' => $attempts,
+                    'maxRetries' => $maxRetries,
+                    'reason' => $lastError,
+                    'retryDelay' => $retryDelay
+                ]);
+                sleep($retryDelay);
+            }
+        }
+        
+        // All retries exhausted
+        return [
+            'success' => false,
+            'error' => $lastError ?? 'Unknown error occurred',
+            'attempts' => $attempts
+        ];
     }
 }

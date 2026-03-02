@@ -1447,6 +1447,13 @@ function startBulkUpdate(tag, status, inverse) {
         addBulkLogEntry('error', `❌ [${data.current}] Failed: ${data.sku} - ${data.reason || 'Unknown error'}`);
     });
     
+    bulkEventSource.addEventListener('retry', function(e) {
+        const data = JSON.parse(e.data);
+        const remainingAttempts = data.maxRetries - data.attempt + 1;
+        addBulkLogEntry('warning', `⚠ [${data.current}] Retry attempt ${data.attempt} for ${data.sku}: ${data.reason}`);
+        addBulkLogEntry('warning', `⚠ Waiting ${data.retryDelay}s before retry... (${remainingAttempts} attempts remaining)`);
+    });
+    
     bulkEventSource.addEventListener('done', function(e) {
         const data = JSON.parse(e.data);
         const duration = ((Date.now() - bulkStartTime) / 1000).toFixed(2);

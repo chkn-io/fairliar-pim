@@ -1703,7 +1703,9 @@ class ShopifyService
                 'json' => [
                     'query' => $mutation,
                     'variables' => $variables
-                ]
+                ],
+                'timeout' => 30,
+                'connect_timeout' => 10,
             ]);
 
             $data = json_decode($response->getBody()->getContents(), true);
@@ -1722,7 +1724,13 @@ class ShopifyService
                 'message' => $e->getMessage(),
                 'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
             ]);
-            return false;
+            throw $e; // Re-throw to allow retry logic in command
+        } catch (\Exception $e) {
+            Log::error('Shopify variant metafield update exception:', [
+                'message' => $e->getMessage(),
+                'type' => get_class($e)
+            ]);
+            throw $e; // Re-throw to allow retry logic in command
         }
     }
 

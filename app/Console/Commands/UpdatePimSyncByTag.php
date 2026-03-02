@@ -17,7 +17,9 @@ class UpdatePimSyncByTag extends Command
                             {--tag= : Product tag to filter (e.g., 26ss)}
                             {--status= : Sync status: include, exclude, or unset}
                             {--not : Invert search - update products WITHOUT the specified tag}
-                            {--confirm : Skip confirmation prompt}';
+                            {--confirm : Skip confirmation prompt}
+                            {--max-retries=3 : Maximum number of retries for failed requests}
+                            {--retry-delay=2 : Delay in seconds between retries}';
 
     /**
      * The console command description.
@@ -115,6 +117,8 @@ class UpdatePimSyncByTag extends Command
         $successCount = 0;
         $failedCount = 0;
         $failedVariants = [];
+        $maxRetries = (int) $this->option('max-retries');
+        $retryDelay = (int) $this->option('retry-delay');
         
         foreach ($allVariants as $index => $variant) {
             $num = $index + 1;
@@ -124,43 +128,36 @@ class UpdatePimSyncByTag extends Command
             $variantTitle = $variant['variant_title'];
             
             // Display progress
-            $this->line("[{$num}/{$total}] Processing: <fg=cyan>{$sku}</> - {$productTitle} ({$variantTitle})");
+            $timestamp = date('g:i:s A');
+            $this->line("→[{$timestamp}] [{$num}/{$total}] Processing: {$sku} - {$productTitle} ({$variantTitle})");
             
-            try {
-                $success = $this->shopifyService->updateVariantMetafield(
-                    $variant['variant_gid'],
-                    'custom',
-                    'pim_sync',
-                    $metafieldValue
-                );
-                
-                if ($success) {
-                    $successCount++;
-                    $this->info("         ✓ Success");
-                } else {
-                    $failedCount++;
-                    $failedVariants[] = [
-                        'sku' => $sku,
-                        'product' => $productTitle,
-                        'variant' => $variantTitle,
-                        'reason' => 'API returned false'
-                    ];
-                    $this->error("         ✗ Failed");
-                }
-                
-                // Small delay to avoid rate limiting
-                usleep(50000); // 50ms delay
-                
-            } catch (\Exception $e) {
+            // Try updating with retries
+            $result = $this->updateVariantWithRetry(
+                $variant['variant_gid'],
+                $metafieldValue,
+                $maxRetries,
+                $retryDelay,
+                $num
+            );
+            
+            $timestamp = date('g:i:s A');
+            if ($result['success']) {
+                $successCount++;
+                $this->info("✓[{$timestamp}] ✅ [{$num}] Success: {$sku}");
+            } else {
                 $failedCount++;
                 $failedVariants[] = [
                     'sku' => $sku,
                     'product' => $productTitle,
                     'variant' => $variantTitle,
-                    'reason' => $e->getMessage()
+                    'reason' => $result['error']
                 ];
-                $this->error("         ✗ Error: " . $e->getMessage());
+                $this->error("✗[{$timestamp}] ❌ [{$num}] Failed after {$result['attempts']} attempts: {$sku}");
+                $this->error("✗[{$timestamp}] ❌ {$result['error']}");
             }
+            
+            // Small delay to avoid rate limiting
+            usleep(50000); // 50ms delay
         }
         
         // Summary
@@ -185,5 +182,86 @@ class UpdatePimSyncByTag extends Command
         $this->newLine();
         
         return 0;
+    }
+
+    /**
+     * Update variant metafield with retry logic
+     *
+     * @param string $variantGid
+     * @param string $metafieldValue
+     * @param int $maxRetries
+     * @param int $retryDelay
+     * @param int $itemNumber
+     * @return array ['success' => bool, 'error' => string|null, 'attempts' => int]
+     */
+    protected function updateVariantWithRetry($variantGid, $metafieldValue, $maxRetries, $retryDelay, $itemNumber)
+    {
+        $attempts = 0;
+        $lastError = null;
+        
+        while ($attempts <= $maxRetries) {
+            $attempts++;
+            
+            try {
+                $success = $this->shopifyService->updateVariantMetafield(
+                    $variantGid,
+                    'custom',
+                    'pim_sync',
+                    $metafieldValue
+                );
+                
+                if ($success) {
+                    return [
+                        'success' => true,
+                        'error' => null,
+                        'attempts' => $attempts
+                    ];
+                }
+                
+                $lastError = 'API returned false';
+                
+            } catch (\GuzzleHttp\Exception\ConnectException $e) {
+                // Connection error - network issue
+                $lastError = 'Connection error: ' . $e->getMessage();
+                
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                // HTTP error (includes 429 rate limiting, 5xx errors, etc.)
+                if ($e->hasResponse()) {
+                    $statusCode = $e->getResponse()->getStatusCode();
+                    if ($statusCode == 429) {
+                        $lastError = 'Rate limit exceeded';
+                        // For rate limiting, wait longer
+                        sleep($retryDelay * 2);
+                    } else {
+                        $lastError = "HTTP {$statusCode}: " . $e->getMessage();
+                    }
+                } else {
+                    $lastError = 'Request error: ' . $e->getMessage();
+                }
+                
+            } catch (\GuzzleHttp\Exception\TransferException $e) {
+                // Stream errors, transfer issues
+                $lastError = 'Transfer error: ' . $e->getMessage();
+                
+            } catch (\Exception $e) {
+                // Any other exception
+                $lastError = 'Unknown error: ' . $e->getMessage();
+            }
+            
+            // If we haven't succeeded and have retries left, wait and try again
+            if ($attempts <= $maxRetries) {
+                $timestamp = date('g:i:s A');
+                $this->warn("⚠[{$timestamp}] Attempt {$attempts} failed for item {$itemNumber}: {$lastError}");
+                $this->warn("⚠[{$timestamp}] Retrying in {$retryDelay} seconds... (" . ($maxRetries - $attempts + 1) . " attempts remaining)");
+                sleep($retryDelay);
+            }
+        }
+        
+        // All retries exhausted
+        return [
+            'success' => false,
+            'error' => $lastError ?? 'Unknown error occurred',
+            'attempts' => $attempts
+        ];
     }
 }
