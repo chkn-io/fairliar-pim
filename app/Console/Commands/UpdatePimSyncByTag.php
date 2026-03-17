@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Services\ShopifyService;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
 
 class UpdatePimSyncByTag extends Command
@@ -16,6 +17,10 @@ class UpdatePimSyncByTag extends Command
     protected $signature = 'pim:update-by-tag 
                             {--tag= : Product tag to filter (e.g., 26ss)}
                             {--status= : Sync status: include, exclude, or unset}
+                            {--location= : Shopify location ID to use when zeroing excluded stock}
+                            {--sku= : Update only one variant by exact SKU}
+                            {--variant-gid= : Update only one variant by exact Shopify variant GID}
+                            {--dry-run : Preview updates without changing metafields or stock}
                             {--not : Invert search - update products WITHOUT the specified tag}
                             {--confirm : Skip confirmation prompt}
                             {--max-retries=3 : Maximum number of retries for failed requests}
@@ -44,6 +49,9 @@ class UpdatePimSyncByTag extends Command
         $tag = $this->option('tag');
         $status = $this->option('status');
         $inverse = $this->option('not');
+        $isDryRun = (bool) $this->option('dry-run');
+        $singleSku = trim((string) $this->option('sku'));
+        $singleVariantGid = trim((string) $this->option('variant-gid'));
         
         // Validate required options
         if (!$tag) {
@@ -67,6 +75,20 @@ class UpdatePimSyncByTag extends Command
             $metafieldValue = 'false';
         }
         // unset = empty string
+
+        $shouldZeroStock = $status === 'exclude';
+        $fallbackLocationId = null;
+
+        if ($shouldZeroStock) {
+            $configuredLocation = Setting::get('default_location_id') ?: $this->option('location');
+            $fallbackLocationId = $this->resolveSingleLocationId($configuredLocation);
+
+            if (!$fallbackLocationId) {
+                $this->error('Error: Could not resolve a valid Shopify location.');
+                $this->info('Use --location with a valid location ID/GID, or set default location in Settings.');
+                return 1;
+            }
+        }
         
         $this->info("╔══════════════════════════════════════════════════════════════╗");
         $this->info("║          Update PIM Sync Status by Tag                      ║");
@@ -76,6 +98,19 @@ class UpdatePimSyncByTag extends Command
         $this->info("Tag:    <fg=cyan>" . ($inverse ? 'NOT ' : '') . "{$tag}</>");
         $this->info("Status: <fg=yellow>" . strtoupper($status) . "</>");
         $this->info("Action: Set custom.pim_sync = " . ($metafieldValue ?: '(empty)'));
+        if ($isDryRun) {
+            $this->warn("Mode:   DRY RUN - no changes will be written to Shopify");
+        }
+        if ($shouldZeroStock) {
+            $this->warn("Stock:  Excluded variants will be set to 0 in Shopify");
+            $this->info("Location: {$fallbackLocationId}");
+        }
+        if ($singleSku !== '') {
+            $this->info("Single variant filter (SKU): {$singleSku}");
+        }
+        if ($singleVariantGid !== '') {
+            $this->info("Single variant filter (GID): {$singleVariantGid}");
+        }
         if ($inverse) {
             $this->warn("Mode:   Inverse - Will update products WITHOUT tag '{$tag}'");
         }
@@ -95,6 +130,14 @@ class UpdatePimSyncByTag extends Command
         // Use optimized tag search (fetches products by tag directly in GraphQL)
         $result = $this->shopifyService->getVariantsByProductTag($tag, true, $inverse);
         $allVariants = $result['variants'];
+
+        if ($singleSku !== '' || $singleVariantGid !== '') {
+            $allVariants = array_values(array_filter($allVariants, function ($variant) use ($singleSku, $singleVariantGid) {
+                $matchesSku = $singleSku === '' || strcasecmp((string)($variant['sku'] ?? ''), $singleSku) === 0;
+                $matchesGid = $singleVariantGid === '' || (string)($variant['variant_gid'] ?? '') === $singleVariantGid;
+                return $matchesSku && $matchesGid;
+            }));
+        }
         
         // Debug info
         $this->comment("GraphQL query returned " . count($allVariants) . " variants after filtering");
@@ -102,10 +145,18 @@ class UpdatePimSyncByTag extends Command
         if (count($allVariants) === 0) {
             $this->comment("Tip: Check your Laravel logs (storage/logs/laravel.log) for details");
             $this->comment("     The logs will show if products were fetched but filtered out");
+            if (!empty($result['errors'])) {
+                $firstError = $result['errors'][0]['message'] ?? 'Unknown Shopify error';
+                $this->error("Shopify fetch error: {$firstError}");
+            }
         }
         
         if (empty($allVariants)) {
-            $this->warn("No variants found" . ($inverse ? " without tag '{$tag}'" : " with tag '{$tag}'"));
+            $scope = $inverse ? " without tag '{$tag}'" : " with tag '{$tag}'";
+            if ($singleSku !== '' || $singleVariantGid !== '') {
+                $scope .= ' matching single-variant filter';
+            }
+            $this->warn("No variants found{$scope}");
             return 0;
         }
         
@@ -132,6 +183,16 @@ class UpdatePimSyncByTag extends Command
                 // Display progress
                 $timestamp = date('g:i:s A');
                 $this->line("→[{$timestamp}] [{$num}/{$total}] Processing: {$sku} - {$productTitle} ({$variantTitle})");
+
+                if ($isDryRun) {
+                    $dryRunAction = $shouldZeroStock
+                        ? 'Would set custom.pim_sync=false and stock=0'
+                        : ('Would set custom.pim_sync=' . ($metafieldValue ?: '(empty)'));
+
+                    $successCount++;
+                    $this->info("~[{$timestamp}] 🧪 [{$num}] {$dryRunAction}: {$sku}");
+                    continue;
+                }
                 
                 // Try updating with retries
                 $result = $this->updateVariantWithRetry(
@@ -144,8 +205,32 @@ class UpdatePimSyncByTag extends Command
                 
                 $timestamp = date('g:i:s A');
                 if ($result['success']) {
-                    $successCount++;
-                    $this->info("✓[{$timestamp}] ✅ [{$num}] Success: {$sku}");
+                    if ($shouldZeroStock) {
+                        $zeroResult = $this->zeroVariantStock(
+                            $variant,
+                            $fallbackLocationId
+                        );
+
+                        if (!$zeroResult['success']) {
+                            $failedCount++;
+                            $failedVariants[] = [
+                                'sku' => $sku,
+                                'product' => $productTitle,
+                                'variant' => $variantTitle,
+                                'reason' => $zeroResult['error']
+                            ];
+                            $this->error("✗[{$timestamp}] ❌ [{$num}] Excluded but failed to set stock=0: {$sku}");
+                            $this->error("✗[{$timestamp}] ❌ {$zeroResult['error']}");
+                            $this->warn("⏭️  Skipping to next variant...");
+                            continue;
+                        }
+
+                        $successCount++;
+                        $this->info("✓[{$timestamp}] ✅ [{$num}] Success: {$sku} (stock set to 0 at {$zeroResult['locations_updated']} location(s))");
+                    } else {
+                        $successCount++;
+                        $this->info("✓[{$timestamp}] ✅ [{$num}] Success: {$sku}");
+                    }
                 } else {
                     $failedCount++;
                     $failedVariants[] = [
@@ -289,5 +374,101 @@ class UpdatePimSyncByTag extends Command
             'error' => $lastError ?? 'Unknown error occurred',
             'attempts' => $attempts
         ];
+    }
+
+    /**
+     * Set Shopify stock to 0 for an excluded variant.
+     *
+     * Attempts all known variant inventory locations; if none are present,
+     * falls back to provided default location.
+     *
+     * @param array $variant
+     * @param string|null $fallbackLocationId
+     * @return array ['success' => bool, 'error' => string|null, 'locations_updated' => int]
+     */
+    protected function zeroVariantStock(array $variant, ?string $fallbackLocationId = null): array
+    {
+        $inventoryItemId = $variant['inventory_item_id'] ?? null;
+
+        if (!$inventoryItemId) {
+            return [
+                'success' => false,
+                'error' => 'Missing inventory item ID; cannot set stock to 0',
+                'locations_updated' => 0,
+            ];
+        }
+
+        $locationIds = [];
+        if (!empty($fallbackLocationId)) {
+            $locationIds[] = $fallbackLocationId;
+        }
+
+        $locationIds = array_values(array_unique(array_filter($locationIds)));
+
+        if (empty($locationIds)) {
+            return [
+                'success' => false,
+                'error' => 'No fallback location configured. Set default location in Settings or pass --location',
+                'locations_updated' => 0,
+            ];
+        }
+
+        $updatedCount = 0;
+        foreach ($locationIds as $locationId) {
+            $success = $this->shopifyService->updateInventoryLevel(
+                $inventoryItemId,
+                $locationId,
+                0
+            );
+
+            if (!$success) {
+                return [
+                    'success' => false,
+                    'error' => "Failed to set stock=0 at location {$locationId}",
+                    'locations_updated' => $updatedCount,
+                ];
+            }
+
+            $updatedCount++;
+        }
+
+        return [
+            'success' => true,
+            'error' => null,
+            'locations_updated' => $updatedCount,
+        ];
+    }
+
+    /**
+     * Resolve a location input (numeric ID or GID) to a valid Shopify Location GID.
+     */
+    protected function resolveSingleLocationId($configuredLocation): ?string
+    {
+        $raw = trim((string) $configuredLocation);
+        if ($raw === '') {
+            return null;
+        }
+
+        $candidate = str_starts_with($raw, 'gid://shopify/Location/')
+            ? $raw
+            : 'gid://shopify/Location/' . preg_replace('/\D+/', '', $raw);
+
+        if ($candidate === 'gid://shopify/Location/') {
+            return null;
+        }
+
+        $locations = $this->shopifyService->getLocations();
+        if (empty($locations)) {
+            return $candidate;
+        }
+
+        foreach ($locations as $location) {
+            $id = (string) ($location['id'] ?? '');
+            if ($id === $candidate || preg_replace('/^gid:\/\/shopify\/Location\//', '', $id) === preg_replace('/^gid:\/\/shopify\/Location\//', '', $candidate)) {
+                return $id;
+            }
+        }
+
+        return null;
     }
 }

@@ -1258,6 +1258,7 @@ class ShopifyService
     public function getVariantsByProductTag($tag, $fetchAll = true, $inverse = false)
     {
         $allVariants = [];
+        $errors = [];
         $hasNextPage = true;
         $cursor = null;
         $pageCount = 0;
@@ -1314,20 +1315,55 @@ class ShopifyService
             }';
             
             try {
-                $response = $this->client->post($this->graphqlEndpoint, [
-                    'headers' => [
-                        'Content-Type' => 'application/json',
-                        'X-Shopify-Access-Token' => $this->apiKey,
-                    ],
-                    'json' => [
-                        'query' => $graphqlQuery
-                    ]
-                ]);
+                $data = null;
+                $maxRetries = 5;
+                $attempt = 0;
 
-                $data = json_decode($response->getBody()->getContents(), true);
+                while ($attempt < $maxRetries) {
+                    $attempt++;
 
-                if (isset($data['errors'])) {
-                    Log::error('Shopify GraphQL errors:', $data['errors']);
+                    $response = $this->client->post($this->graphqlEndpoint, [
+                        'headers' => [
+                            'Content-Type' => 'application/json',
+                            'X-Shopify-Access-Token' => $this->apiKey,
+                        ],
+                        'json' => [
+                            'query' => $graphqlQuery
+                        ]
+                    ]);
+
+                    $data = json_decode($response->getBody()->getContents(), true);
+
+                    $graphqlErrors = $data['errors'] ?? [];
+                    if (empty($graphqlErrors)) {
+                        break;
+                    }
+
+                    $isThrottled = collect($graphqlErrors)->contains(function ($error) {
+                        $code = $error['extensions']['code'] ?? '';
+                        $message = strtolower((string)($error['message'] ?? ''));
+                        return $code === 'THROTTLED' || str_contains($message, 'throttled');
+                    });
+
+                    if (!$isThrottled || $attempt >= $maxRetries) {
+                        Log::error('Shopify GraphQL errors:', $graphqlErrors);
+                        $errors = array_merge($errors, $graphqlErrors);
+                        break 2;
+                    }
+
+                    $delaySeconds = min(2 * $attempt, 10);
+                    Log::warning('Shopify GraphQL throttled in getVariantsByProductTag, retrying...', [
+                        'attempt' => $attempt,
+                        'max_retries' => $maxRetries,
+                        'delay_seconds' => $delaySeconds,
+                        'tag' => $tag,
+                        'inverse' => $inverse,
+                    ]);
+                    sleep($delaySeconds);
+                }
+
+                if (!is_array($data)) {
+                    $errors[] = ['message' => 'Invalid Shopify response payload'];
                     break;
                 }
 
@@ -1441,6 +1477,7 @@ class ShopifyService
 
         return [
             'variants' => $allVariants,
+            'errors' => $errors,
             'pageInfo' => [
                 'hasNextPage' => $hasNextPage,
                 'endCursor' => $cursor
