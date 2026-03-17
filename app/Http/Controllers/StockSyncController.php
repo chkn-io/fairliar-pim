@@ -474,10 +474,33 @@ class StockSyncController extends Controller
             );
             
             if ($success) {
+                if ($exclude) {
+                    $inventoryItemId = $request->input('inventory_item_id');
+
+                    if (!$inventoryItemId) {
+                        $inventoryItemId = $this->shopifyService->getInventoryItemIdByVariantGid($variantGid);
+                    }
+
+                    if (!$inventoryItemId) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Cannot set stock to 0: missing inventory item ID'
+                        ], 422);
+                    }
+
+                    $zeroResult = $this->setVariantStockToZeroAtDefaultLocation($inventoryItemId);
+                    if (!$zeroResult['success']) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => $zeroResult['message']
+                        ], 422);
+                    }
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => $exclude 
-                        ? 'Variant excluded from sync successfully' 
+                        ? 'Variant excluded and stock set to 0 successfully' 
                         : 'Variant included in sync successfully',
                     'pim_sync' => $metafieldValue
                 ]);
@@ -669,7 +692,11 @@ class StockSyncController extends Controller
                 $metafieldValue = 'true';
             } elseif ($status === 'exclude') {
                 $metafieldValue = 'false';
+            } elseif ($status === 'unset') {
+                $metafieldValue = '';
             }
+
+            $shouldZeroStock = in_array($status, ['exclude', 'unset'], true);
 
             $this->sendStreamMessage('info', ['message' => 'Fetching variants...']);
 
@@ -730,6 +757,42 @@ class StockSyncController extends Controller
                     );
 
                     if ($result['success']) {
+                        if ($shouldZeroStock) {
+                            $inventoryItemId = $variant['inventory_item_id'] ?? null;
+                            if (!$inventoryItemId) {
+                                $failedCount++;
+                                $failedVariants[] = [
+                                    'sku' => $sku,
+                                    'product' => $productTitle,
+                                    'variant' => $variantTitle,
+                                    'reason' => 'Missing inventory item ID for stock reset'
+                                ];
+                                $this->sendStreamMessage('failed', [
+                                    'current' => $num,
+                                    'sku' => $sku,
+                                    'reason' => 'Missing inventory item ID for stock reset'
+                                ]);
+                                continue;
+                            }
+
+                            $zeroResult = $this->setVariantStockToZeroAtDefaultLocation($inventoryItemId);
+                            if (!$zeroResult['success']) {
+                                $failedCount++;
+                                $failedVariants[] = [
+                                    'sku' => $sku,
+                                    'product' => $productTitle,
+                                    'variant' => $variantTitle,
+                                    'reason' => $zeroResult['message']
+                                ];
+                                $this->sendStreamMessage('failed', [
+                                    'current' => $num,
+                                    'sku' => $sku,
+                                    'reason' => $zeroResult['message']
+                                ]);
+                                continue;
+                            }
+                        }
+
                         $successCount++;
                         $this->sendStreamMessage('success', [
                             'current' => $num,
@@ -887,6 +950,50 @@ class StockSyncController extends Controller
             'success' => false,
             'error' => $lastError ?? 'Unknown error occurred',
             'attempts' => $attempts
+        ];
+    }
+
+    /**
+     * Set stock to zero at exactly one location (default location from settings).
+     */
+    private function setVariantStockToZeroAtDefaultLocation(string $inventoryItemId): array
+    {
+        $defaultLocationId = Setting::get('default_location_id');
+
+        if (empty($defaultLocationId)) {
+            return [
+                'success' => false,
+                'message' => 'Default location is not configured in Settings > Warehouse'
+            ];
+        }
+
+        $locationId = str_starts_with((string) $defaultLocationId, 'gid://shopify/Location/')
+            ? (string) $defaultLocationId
+            : 'gid://shopify/Location/' . preg_replace('/\D+/', '', (string) $defaultLocationId);
+
+        if ($locationId === 'gid://shopify/Location/') {
+            return [
+                'success' => false,
+                'message' => 'Invalid default location configured'
+            ];
+        }
+
+        $success = $this->shopifyService->updateInventoryLevel(
+            $inventoryItemId,
+            $locationId,
+            0
+        );
+
+        if (!$success) {
+            return [
+                'success' => false,
+                'message' => 'Failed to set stock to 0 at default location'
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Stock set to 0 at default location'
         ];
     }
 }

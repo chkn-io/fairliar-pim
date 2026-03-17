@@ -799,6 +799,10 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
                 body: JSON.stringify({
                     variant_gid: variantGid,
                     product_gid: productGid,
+                    inventory_item_id: (function() {
+                        const syncBtn = document.querySelector(`.sync-stock-btn[data-variant-id="${variantGid.replace('gid://shopify/ProductVariant/', '')}"]`);
+                        return syncBtn ? syncBtn.dataset.inventoryItemId : '';
+                    })(),
                     exclude: exclude
                 })
             })
@@ -810,13 +814,35 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
                     // Update the row instead of reloading
                     const row = document.querySelector(`button[onclick*="${variantGid}"]`).closest('tr');
                     const statusCell = row.querySelector('td:nth-child(7)'); // Sync Status column (after checkbox, product, variant, sku, barcode, tags)
+                    const shopifyStockCell = row.querySelector('td:nth-child(8)'); // Shopify Stock column
                     const actionsCell = row.querySelector('td:last-child'); // Actions column
+                    const variantId = variantGid.replace('gid://shopify/ProductVariant/', '');
                     
                     // Update status badge
                     if (data.pim_sync === 'true') {
                         statusCell.innerHTML = '<span class="badge bg-success" title="This variant is included in PIM sync">✓ Included</span>';
                     } else if (data.pim_sync === 'false') {
                         statusCell.innerHTML = '<span class="badge bg-warning text-dark" title="This variant is excluded from PIM sync">✗ Excluded</span>';
+                        // Visual fix: immediately reflect Shopify stock reset to 0 on exclude
+                        if (shopifyStockCell) {
+                            shopifyStockCell.innerHTML = '<span class="badge bg-primary">0</span>';
+                        }
+
+                        const diffEl = row.querySelector(`.stock-difference[data-variant-id="${variantId}"]`);
+                        if (diffEl) {
+                            diffEl.dataset.shopifyStock = '0';
+                            const warehouseStockRaw = row.querySelector(`.warehouse-stock[data-variant-id="${variantId}"]`)?.dataset.warehouseStock;
+                            if (warehouseStockRaw !== undefined && warehouseStockRaw !== null && warehouseStockRaw !== '') {
+                                const warehouseStock = parseInt(warehouseStockRaw, 10);
+                                if (!Number.isNaN(warehouseStock)) {
+                                    const diff = 0 - warehouseStock;
+                                    let diffClass = 'text-muted';
+                                    if (diff > 0) diffClass = 'text-success';
+                                    else if (diff < 0) diffClass = 'text-danger';
+                                    diffEl.innerHTML = `<span class="fw-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</span>`;
+                                }
+                            }
+                        }
                     }
                     
                     // Update action buttons
@@ -855,8 +881,8 @@ function togglePimSync(variantGid, productGid, productTitle, exclude) {
                         </button>`;
                     }
                     
-                    // Keep Sync button if it exists
-                    if (syncButton) {
+                    // Keep Sync button only when included
+                    if (syncButton && data.pim_sync === 'true') {
                         newButtonsHtml += syncButton.outerHTML;
                     }
                     

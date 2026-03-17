@@ -1701,6 +1701,48 @@ class ShopifyService
     /**
      * Update variant metafield using metafieldsSet mutation
      */
+    public function getInventoryItemIdByVariantGid(string $variantGid): ?string
+    {
+        $query = 'query GetVariantInventoryItem($id: ID!) {
+            productVariant(id: $id) {
+                id
+                inventoryItem {
+                    id
+                }
+            }
+        }';
+
+        try {
+            $response = $this->client->post($this->graphqlEndpoint, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->apiKey,
+                ],
+                'json' => [
+                    'query' => $query,
+                    'variables' => [
+                        'id' => $variantGid,
+                    ],
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($data['errors'])) {
+                Log::error('Shopify getInventoryItemIdByVariantGid errors:', $data['errors']);
+                return null;
+            }
+
+            return $data['data']['productVariant']['inventoryItem']['id'] ?? null;
+        } catch (RequestException $e) {
+            Log::error('Shopify getInventoryItemIdByVariantGid request failed:', [
+                'message' => $e->getMessage(),
+                'variant_gid' => $variantGid,
+            ]);
+            return null;
+        }
+    }
+
     public function updateVariantMetafield($variantGid, $namespace, $key, $value)
     {
         // Use metafieldsSet mutation which is the modern way to set metafields
