@@ -80,12 +80,13 @@ class UpdatePimSyncByTag extends Command
         $fallbackLocationId = null;
 
         if ($shouldZeroStock) {
-            $configuredLocation = Setting::get('default_location_id') ?: $this->option('location');
+            // --location flag takes priority; otherwise fall back to the default_location_id setting
+            $configuredLocation = $this->option('location') ?: Setting::get('default_location_id');
             $fallbackLocationId = $this->resolveSingleLocationId($configuredLocation);
 
             if (!$fallbackLocationId) {
                 $this->error('Error: Could not resolve a valid Shopify location.');
-                $this->info('Use --location with a valid location ID/GID, or set default location in Settings.');
+                $this->info('Set the default location in Settings > Warehouse, or pass --location=<id>.');
                 return 1;
             }
         }
@@ -94,7 +95,7 @@ class UpdatePimSyncByTag extends Command
         $this->info("║          Update PIM Sync Status by Tag                      ║");
         $this->info("╚══════════════════════════════════════════════════════════════╝");
         $this->newLine();
-        
+
         $this->info("Tag:    <fg=cyan>" . ($inverse ? 'NOT ' : '') . "{$tag}</>");
         $this->info("Status: <fg=yellow>" . strtoupper($status) . "</>");
         $this->info("Action: Set custom.pim_sync = " . ($metafieldValue ?: '(empty)'));
@@ -103,7 +104,8 @@ class UpdatePimSyncByTag extends Command
         }
         if ($shouldZeroStock) {
             $this->warn("Stock:  Excluded variants will be set to 0 in Shopify");
-            $this->info("Location: {$fallbackLocationId}");
+            $locationSource = $this->option('location') ? '(from --location flag)' : '(from Settings default)';
+            $this->info("Location: {$fallbackLocationId} {$locationSource}");
         }
         if ($singleSku !== '') {
             $this->info("Single variant filter (SKU): {$singleSku}");
@@ -128,7 +130,7 @@ class UpdatePimSyncByTag extends Command
         $this->newLine();
         
         // Use optimized tag search (fetches products by tag directly in GraphQL)
-        $result = $this->shopifyService->getVariantsByProductTag($tag, true, $inverse);
+        $result = $this->shopifyService->getVariantsByProductTag($tag, true, $inverse, $fallbackLocationId);
         $allVariants = $result['variants'];
 
         if ($singleSku !== '' || $singleVariantGid !== '') {
@@ -185,9 +187,12 @@ class UpdatePimSyncByTag extends Command
                 $this->line("→[{$timestamp}] [{$num}/{$total}] Processing: {$sku} - {$productTitle} ({$variantTitle})");
 
                 if ($isDryRun) {
-                    $dryRunAction = $shouldZeroStock
-                        ? 'Would set custom.pim_sync=false and stock=0'
-                        : ('Would set custom.pim_sync=' . ($metafieldValue ?: '(empty)'));
+                    if ($shouldZeroStock) {
+                        $totalStock   = $variant['total_inventory'] ?? 0;
+                        $dryRunAction = "Would set custom.pim_sync=false and stock=0 | current total stock (all locations): {$totalStock}";
+                    } else {
+                        $dryRunAction = 'Would set custom.pim_sync=' . ($metafieldValue ?: '(empty)');
+                    }
 
                     $successCount++;
                     $this->info("~[{$timestamp}] 🧪 [{$num}] {$dryRunAction}: {$sku}");

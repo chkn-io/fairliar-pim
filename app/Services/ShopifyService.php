@@ -1330,7 +1330,7 @@ class ShopifyService
      * @param bool $fetchAll Fetch all pages or just first page
      * @param bool $inverse If true, searches for products WITHOUT the tag (using -tag:value)
      */
-    public function getVariantsByProductTag($tag, $fetchAll = true, $inverse = false)
+    public function getVariantsByProductTag($tag, $fetchAll = true, $inverse = false, $locationId = null)
     {
         $allVariants = [];
         $errors = [];
@@ -1499,10 +1499,10 @@ class ShopifyService
                         
                         // Get metafield value
                         $pimSync = $variant['metafield']['value'] ?? '';
-                        
+
                         // Extract inventory item ID
                         $inventoryItemId = $variant['inventoryItem']['id'] ?? '';
-                        
+
                         $allVariants[] = [
                             'variant_id' => $variantNumericId,
                             'variant_gid' => $variant['id'],
