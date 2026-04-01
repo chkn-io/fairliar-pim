@@ -4,12 +4,12 @@ namespace App\Services;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ShopifyService
 {
     private $client;
-    private $apiKey;
     private $storeDomain;
     private $apiVersion;
     private $graphqlEndpoint;
@@ -17,10 +17,85 @@ class ShopifyService
     public function __construct()
     {
         $this->client = new Client();
-        $this->apiKey = config('shopify.api_key');
         $this->storeDomain = config('shopify.store_domain');
         $this->apiVersion = config('shopify.api_version');
         $this->graphqlEndpoint = config('shopify.graphql_endpoint');
+    }
+
+    /**
+     * Return a valid Shopify access token.
+     *
+     * If client_id + client_secret are configured, a token is obtained via the
+     * OAuth client-credentials flow and cached until it expires (with a 60-second
+     * safety buffer).  When only a static API key is set, that key is returned
+     * directly (legacy / long-lived tokens).
+     */
+    private function getAccessToken(): string
+    {
+        $clientId     = config('shopify.client_id');
+        $clientSecret = config('shopify.client_secret');
+
+        // Fall back to the static key when OAuth credentials are not configured.
+        if (empty($clientId) || empty($clientSecret)) {
+            return config('shopify.api_key') ?? '';
+        }
+
+        $cacheKey = 'shopify_access_token_' . md5($this->storeDomain . $clientId);
+
+        // Return the cached token if it hasn't expired yet.
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        // Token is missing or expired — fetch a new one.
+        return $this->fetchNewAccessToken($clientId, $clientSecret);
+    }
+
+    /**
+     * Request a new access token from Shopify's OAuth endpoint and cache it
+     * with the TTL Shopify specifies minus a 60-second safety buffer.
+     */
+    private function fetchNewAccessToken(string $clientId, string $clientSecret): string
+    {
+        $cacheKey = 'shopify_access_token_' . md5($this->storeDomain . $clientId);
+
+        try {
+            $response = $this->client->post("https://{$this->storeDomain}/admin/oauth/access_token", [
+                'json' => [
+                    'client_id'     => $clientId,
+                    'client_secret' => $clientSecret,
+                    'grant_type'    => 'client_credentials',
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (empty($data['access_token'])) {
+                Log::error('Shopify OAuth: unexpected response', $data ?? []);
+                return config('shopify.api_key') ?? '';
+            }
+
+            $ttl     = max(60, (int) ($data['expires_in'] ?? 86399) - 60);
+            $token   = $data['access_token'];
+
+            // Store with the dynamic TTL from Shopify's response.
+            Cache::put($cacheKey, $token, now()->addSeconds($ttl));
+
+            Log::info('Shopify OAuth: new access token obtained', [
+                'expires_in' => $data['expires_in'] ?? 'unknown',
+                'cached_ttl' => $ttl,
+            ]);
+
+            return $token;
+        } catch (RequestException $e) {
+            Log::error('Shopify OAuth: token request failed', [
+                'message'  => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+            ]);
+
+            // Graceful fallback to the static key so existing operations keep working.
+            return config('shopify.api_key') ?? '';
+        }
     }
 
     /**
@@ -34,7 +109,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $graphqlQuery
@@ -306,7 +381,7 @@ class ShopifyService
                 $response = $this->client->post($this->graphqlEndpoint, [
                     'headers' => [
                         'Content-Type' => 'application/json',
-                        'X-Shopify-Access-Token' => $this->apiKey,
+                        'X-Shopify-Access-Token' => $this->getAccessToken(),
                     ],
                     'json' => [
                         'query' => $graphqlQuery
@@ -415,7 +490,7 @@ class ShopifyService
                 $response = $this->client->post($this->graphqlEndpoint, [
                     'headers' => [
                         'Content-Type' => 'application/json',
-                        'X-Shopify-Access-Token' => $this->apiKey,
+                        'X-Shopify-Access-Token' => $this->getAccessToken(),
                     ],
                     'json' => [
                         'query' => $graphqlQuery
@@ -493,7 +568,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $graphqlQuery
@@ -694,7 +769,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $graphqlQuery,
@@ -721,7 +796,7 @@ class ShopifyService
                     $response = $this->client->post($this->graphqlEndpoint, [
                         'headers' => [
                             'Content-Type' => 'application/json',
-                            'X-Shopify-Access-Token' => $this->apiKey,
+                            'X-Shopify-Access-Token' => $this->getAccessToken(),
                         ],
                         'json' => [
                             'query' => $graphqlQuery,
@@ -1118,7 +1193,7 @@ class ShopifyService
                 $response = $this->client->post($this->graphqlEndpoint, [
                     'headers' => [
                         'Content-Type' => 'application/json',
-                        'X-Shopify-Access-Token' => $this->apiKey,
+                        'X-Shopify-Access-Token' => $this->getAccessToken(),
                     ],
                     'json' => [
                         'query' => $graphqlQuery
@@ -1325,7 +1400,7 @@ class ShopifyService
                     $response = $this->client->post($this->graphqlEndpoint, [
                         'headers' => [
                             'Content-Type' => 'application/json',
-                            'X-Shopify-Access-Token' => $this->apiKey,
+                            'X-Shopify-Access-Token' => $this->getAccessToken(),
                         ],
                         'json' => [
                             'query' => $graphqlQuery
@@ -1523,7 +1598,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $mutation,
@@ -1580,7 +1655,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $mutation,
@@ -1650,7 +1725,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $query,
@@ -1716,7 +1791,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $query,
@@ -1777,7 +1852,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $mutation,
@@ -1863,7 +1938,7 @@ class ShopifyService
             $response = $this->client->post($this->graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $this->apiKey,
+                    'X-Shopify-Access-Token' => $this->getAccessToken(),
                 ],
                 'json' => [
                     'query' => $mutation,

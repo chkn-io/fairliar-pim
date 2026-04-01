@@ -2,6 +2,8 @@
 
 return [
     'api_key' => env('SHOPIFY_API_KEY'),
+    'client_id' => env('SHOPIFY_CLIENT_ID'),
+    'client_secret' => env('SHOPIFY_CLIENT_SECRET'),
     'store_domain' => env('SHOPIFY_STORE_DOMAIN'),
     'api_version' => env('SHOPIFY_API_VERSION', '2025-10'),
     'graphql_endpoint' => env('SHOPIFY_STORE_DOMAIN') ? 'https://' . env('SHOPIFY_STORE_DOMAIN') . '/admin/api/' . env('SHOPIFY_API_VERSION', '2025-10') . '/graphql.json' : null,
