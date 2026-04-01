@@ -219,7 +219,7 @@ class SyncInventoryCommand extends Command
             $response = $client->post($graphqlEndpoint, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-Shopify-Access-Token' => $store->access_token,
+                    'X-Shopify-Access-Token' => $store->getToken(),
                 ],
                 'json' => ['query' => $query]
             ]);
@@ -282,7 +282,7 @@ class SyncInventoryCommand extends Command
         $response = $client->post($graphqlEndpoint, [
             'headers' => [
                 'Content-Type' => 'application/json',
-                'X-Shopify-Access-Token' => $store->access_token,
+                'X-Shopify-Access-Token' => $store->getToken(),
             ],
             'json' => ['query' => $query]
         ]);
@@ -306,7 +306,7 @@ class SyncInventoryCommand extends Command
         $response = $client->post($graphqlEndpoint, [
             'headers' => [
                 'Content-Type' => 'application/json',
-                'X-Shopify-Access-Token' => $store->access_token,
+                'X-Shopify-Access-Token' => $store->getToken(),
             ],
             'json' => ['query' => $locationQuery]
         ]);
@@ -347,7 +347,7 @@ class SyncInventoryCommand extends Command
         $response = $client->post($graphqlEndpoint, [
             'headers' => [
                 'Content-Type' => 'application/json',
-                'X-Shopify-Access-Token' => $store->access_token,
+                'X-Shopify-Access-Token' => $store->getToken(),
             ],
             'json' => ['query' => $mutation]
         ]);

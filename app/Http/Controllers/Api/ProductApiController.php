@@ -61,7 +61,7 @@ class ProductApiController extends Controller
             // Fetch products from Shopify
             $products = $this->fetchProductsFromCollection(
                     $store->shop_domain,
-                    $store->access_token,
+                    $store->getToken(),
                     $collectionId
                   );
 

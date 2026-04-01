@@ -2,8 +2,12 @@
 
 namespace App\Models;
 
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class Store extends Model
 {
@@ -14,6 +18,8 @@ class Store extends Model
         'shop_domain',
         'required_order_tag',
         'access_token',
+        'client_id',
+        'client_secret',
         'is_active',
         'is_default'
     ];
@@ -22,6 +28,63 @@ class Store extends Model
         'is_active' => 'boolean',
         'is_default' => 'boolean',
     ];
+
+    /**
+     * Return a valid Shopify access token for this store.
+     *
+     * If the store has client_id + client_secret configured, the token is
+     * obtained via the OAuth client-credentials flow and cached until Shopify
+     * says it expires (with a 60-second safety buffer).
+     * Falls back to the static access_token stored in the database.
+     */
+    public function getToken(): string
+    {
+        if (empty($this->client_id) || empty($this->client_secret)) {
+            return $this->access_token ?? '';
+        }
+
+        $cacheKey = 'shopify_store_token_' . md5($this->shop_domain . $this->client_id);
+
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        try {
+            $response = (new Client())->post("https://{$this->shop_domain}/admin/oauth/access_token", [
+                'json' => [
+                    'client_id'     => $this->client_id,
+                    'client_secret' => $this->client_secret,
+                    'grant_type'    => 'client_credentials',
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (empty($data['access_token'])) {
+                Log::error("Shopify OAuth [{$this->name}]: unexpected response", $data ?? []);
+                return $this->access_token ?? '';
+            }
+
+            $ttl   = max(60, (int) ($data['expires_in'] ?? 86399) - 60);
+            $token = $data['access_token'];
+
+            Cache::put($cacheKey, $token, now()->addSeconds($ttl));
+
+            Log::info("Shopify OAuth [{$this->name}]: new access token obtained", [
+                'expires_in' => $data['expires_in'] ?? 'unknown',
+                'cached_ttl' => $ttl,
+            ]);
+
+            return $token;
+        } catch (RequestException $e) {
+            Log::error("Shopify OAuth [{$this->name}]: token request failed", [
+                'message'  => $e->getMessage(),
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+            ]);
+
+            return $this->access_token ?? '';
+        }
+    }
 
     /**
      * Get the default store
